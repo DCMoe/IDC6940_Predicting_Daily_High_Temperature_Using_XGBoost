@@ -32,7 +32,7 @@ writing!
 Nice report!
 :::
 
-## Introduction
+## Introduction - Example
 
 The introduction should:
 
@@ -67,6 +67,24 @@ to add more work...*
 Cite new paper [@su2012linear]
 
 Classification of Knee OA was studied here [@guida2021knee]
+
+## Introduction
+
+To be written soon...
+
+Citations for the papers so far:
+
+- Enhancing short-term forecasting of daily precipitation using numerical weather prediction bias correcting with XGBoost in different regions of China [@DONG2023105579]
+
+- Statistical Prediction of Minimum and Maximum Air Temperature in California and Western North America [@dias2018statistical]
+
+- XGBoost: A Scalable Tree Boosting System [@Chen_2016]
+
+- A Tutorial and Use Case Example of the eXtreme Gradient Boosting (XGBoost) Artificial Intelligence Algorithm for Drug Development Applications [@xgboost_tutorial]
+
+- Comparison of Average Temperature Prediction Based on XGBoost and Prophet Models [@Zhou_2023]
+
+- Machine Learning for Weather Forecasting: XGBoost vs SVM vs Random Forest in Predicting Temperature for Visakhapatnam [@Singh2023MachineLF]
 
 ## Methods
 

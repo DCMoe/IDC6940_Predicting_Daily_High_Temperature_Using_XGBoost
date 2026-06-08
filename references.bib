@@ -93,3 +93,88 @@
   year={2014},
   publisher={Royal Society of Chemistry}
 }
+
+# Beginning of Capstone Project Citations
+
+## XGBoost in China 
+@article{DONG2023105579,
+title = {Enhancing short-term forecasting of daily precipitation using numerical weather prediction bias correcting with XGBoost in different regions of China},
+journal = {Engineering Applications of Artificial Intelligence},
+volume = {117},
+pages = {105579},
+year = {2023},
+issn = {0952-1976},
+doi = {https://doi.org/10.1016/j.engappai.2022.105579},
+url = {https://www.sciencedirect.com/science/article/pii/S0952197622005693},
+author = {Jianhua Dong and Wenzhi Zeng and Lifeng Wu and Jiesheng Huang and Thomas Gaiser and Amit Kumar Srivastava},
+keywords = {Forecasting, Precipitation, Extreme gradient boosting, Bias correction, Numerical weather prediction},
+abstract = {Accurate precipitation (P) short-term forecasts are important for engineering studies and water allocation. This study evaluated a method for bias correction of the Numerical Weather Prediction (NWP) of Global Ensemble Forecast System V2 forecasts based on the extreme gradient boosting (XGBoost) model (M3) and 689 meteorological stations in seven different climatic regions of China. The method used a common deviation correction for multiple meteorological factors to forecast P for 1–8 d ahead. It was also compared with the equidistant cumulative distribution functions matching a single weather factor (EDCDFm, M1) and the XGBoost model (M2). The M3 method had the best forecast performance. M1, M2, and M3 methods had an average root mean square error (RMSE) ranging from 2.292–17.049 mm, 1.844–18.835 mm, and 1.819–13.608 mm, respectively. The performance of each method tended to decrease as the lead time was extended. The average false alarm ratio (increased from 55.3%, 52.8% and 50.1% to 75.8%, 82.3% and 76.0%, respectively) and miss ratio (increased from 60.9%, 53.5% and 50.3% to 76.6%, 77.7% and 71.2%, respectively) also increased with an increased lead time for all methods. The forecast performance trended downwards from northwest to southeast China. However, each method’s significance in forecasting P’s determination coefficient showed a contrary pattern to the forecast accuracy. There was a general underestimation across the methods. The best performance for forecasting P was achieved in winter, with root mean square error values of 2.0–3.4 mm, followed in order by autumn > spring > summer. Factor P contributed the most to forecast P after bias correction of the XGBoost model (average Gain, Cover, and Frequency values of 0.55, 0.45, and 0.29, respectively). In summary, satisfactory performance could be obtained using the XGBoost model combined with multi-factor bias correction for NWP data to forecast daily P.}
+}
+
+## Max Air Temp In Cali - Tech Report
+@techreport{dias2018statistical,
+  author      = {Dias, Daniela F. and Cayan, Daniel R. and Gershunov, Alexander},
+  title       = {Statistical Prediction of Minimum and Maximum Air Temperature in California and Western North America},
+  institution = {California Energy Commission},
+  year        = {2018},
+  number      = {CCCA4-CEC-2018-011},
+  month       = aug,
+  address     = {Sacramento, CA},
+  note        = {A report for California's Fourth Climate Change Assessment},
+}
+
+## Original XGBoost Paper
+@inproceedings{Chen_2016, 
+   series={KDD ’16},
+   title={XGBoost: A Scalable Tree Boosting System},
+   url={http://dx.doi.org/10.1145/2939672.2939785},
+   DOI={10.1145/2939672.2939785},
+   booktitle={Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+   publisher={ACM},
+   author={Chen, Tianqi and Guestrin, Carlos},
+   year={2016},
+   month=Aug, pages={785–794},
+   collection={KDD ’16} 
+}
+
+## XGBoost Tutorial Paper
+@article{xgboost_tutorial,
+    author = {Wiens, Matthew and Verone-Boyle, Alissa and Henscheid, Nick and Podichetty, Jagdeep T. and Burton, Jackson},
+    title = {A Tutorial and Use Case Example of the eXtreme Gradient Boosting (XGBoost) Artificial Intelligence Algorithm for Drug Development Applications},
+    journal = {Clinical and Translational Science},
+    volume = {18},
+    number = {3},
+    pages = {e70172},
+    keywords = {boosting, machine learning, quantitative clinical pharmacology, XGBoost},
+    doi = {https://doi.org/10.1111/cts.70172},
+    url = {https://ascpt.onlinelibrary.wiley.com/doi/abs/10.1111/cts.70172},
+    eprint = {https://ascpt.onlinelibrary.wiley.com/doi/pdf/10.1111/cts.70172},
+    note = {e70172 CTS-2024-0552C},
+    abstract = {ABSTRACT Approaches to artificial intelligence and machine learning (AI/ML) continue to advance in the field of drug development. A sound understanding of the underlying concepts and guiding principles of AI/ML implementation is a prerequisite to identifying which AI/ML approach is most appropriate based on the context. This tutorial focuses on the concepts and implementation of the popular eXtreme gradient boosting (XGBoost) algorithm for classification and regression of simple clinical trial-like datasets. Emphasis is placed on relating the underlying concepts to the code implementation. In doing so, the aim is for the reader to gain knowledge about the underlying algorithm and become better versed with how to implement the algorithm functions for relevant clinical drug development questions. In turn, this will provide practical ML experience which can be applied to algorithms and problems beyond the scope of this tutorial.},
+    year = {2025}
+}
+
+## Avg Temp Comparison of XGBoost and Prophet
+@article{Zhou_2023, 
+    title={Comparison of Average Temperature Prediction Based on XGBoost and Prophet Models}, 
+    volume={76}, 
+    url={https://drpress.org/ojs/index.php/HSET/article/view/16080}, 
+    DOI={10.54097/x2s0s641}, 
+    abstractNote={
+    Temperature prediction is extremely important in various fields. With this in mind, this study utilized two prominent models, XGBoost and Prophet, known for their efficacy in time series forecasting, to perform daily average temperature predictions based on historical data. XGBoost model enhances the Gradient Boosted Decision Tree method and the Prophet model leverages an additive model that combines seasonal and holiday features. The dataset comprised historical data (1995-2020) of daily average temperatures from major cities, serving as an ideal time series subject for forecasting. This study trained both models on the initial 80% of the data from four cities and used them to forecast the remaining period. This research employed Root Mean Square Error (RMSE) analysis to evaluate the performance of the models. The results indicated that the Prophet model surpassed the XGBoost model in two out of the four cities and matched its performance in the other two.
+    }, 
+    journal={Highlights in Science, Engineering and Technology}, 
+    author={Zhou, Xiang}, 
+    year={2023}, 
+    month={Dec.}, 
+    pages={572–578} 
+}
+
+## ML For Weather Forecasting Temps
+@article{Singh2023MachineLF,
+  title={Machine Learning for Weather Forecasting: XGBoost vs SVM vs Random Forest in Predicting Temperature for Visakhapatnam},
+  author={Deepnita Singh and Nisha Rawat},
+  journal={International Journal of Intelligent Systems and Applications},
+  year={2023},
+  url={https://api.semanticscholar.org/CorpusID:262993809}
+}
