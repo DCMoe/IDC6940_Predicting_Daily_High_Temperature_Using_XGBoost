@@ -32,59 +32,32 @@ writing!
 Nice report!
 :::
 
-## Introduction - Example
-
-The introduction should:
-
--   Develop a storyline that captures attention and maintains interest.
-
--   Your audience is your peers
-
--   Clearly state the problem or question you're addressing.
-
-<!-- -->
-
--   Introduce why it is relevant needs.
-
--   Provide an overview of your approach.
-
-Example of writing including citing references:
-
-*This is an introduction to ..... regression, which is a non-parametric
-estimator that estimates the conditional expectation of two variables
-which is random. The goal of a kernel regression is to discover the
-non-linear relationship between two random variables. To discover the
-non-linear relationship, kernel estimator or kernel smoothing is the
-main method to estimate the curve for non-parametric statistics. In
-kernel estimator, weight function is known as kernel function
-[@efr2008]. Cite this paper [@bro2014principal]. The GEE [@wang2014].
-The PCA [@daffertshofer2004pca]*. Topology can be used in machine
-learning [@adams2021topology]
-
-For Symbolic Regression [@wang2019symbolic] *This is my work and I want
-to add more work...*
-
-Cite new paper [@su2012linear]
-
-Classification of Knee OA was studied here [@guida2021knee]
-
 ## Introduction
 
-To be written soon...
+Accurate prediction of daily high temperatures is a critical component of modern weather forecasting, influencing decision-making across sectors such as energy management, transportation, and public safety. 
+Reliable temperature forecasts support efficient resource allocation, including electricity demand planning and climate-sensitive operations in aviation and infrastructure. 
+In recent years, advances in data-driven modeling have complemented traditional numerical weather prediction methods, offering improved accuracy and adaptability for localized forecasting tasks. 
+Machine learning techniques, particularly ensemble methods, have demonstrated strong performance in capturing nonlinear relationships within meteorological data. 
+Among these, Extreme Gradient Boosting (XGBoost) has emerged as a powerful and efficient algorithm for predictive modeling in structured datasets [@Chen_2016].
 
-Citations for the papers so far:
+Recent research has increasingly explored the use of machine learning techniques to enhance weather prediction accuracy, particularly in short-term forecasting applications. 
+Ensemble learning methods such as XGBoost have been shown to outperform traditional statistical models and complement numerical weather prediction systems by effectively capturing nonlinear relationships and correcting systematic biases [@DONG2023105579]. 
+Prior studies have applied XGBoost to tasks such as precipitation forecasting and bias correction of meteorological outputs, demonstrating improved predictive performance across diverse geographic regions [@DONG2023105579]. 
+Additionally, comparative analyses of machine learning algorithms highlight the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023], [@Singh2023MachineLF]. 
+Despite these advances, many studies focus on regional or large-scale forecasting problems, leaving opportunities for more localized, site-specific modeling of daily temperature using high-frequency observational data. 
+XGBoost has also been documented in tutorial and use-case contexts for its implementation and interpretability in applied machine learning problems [@xgboost_tutorial].
 
-- Enhancing short-term forecasting of daily precipitation using numerical weather prediction bias correcting with XGBoost in different regions of China [@DONG2023105579]
+This study focuses on predicting daily high temperatures at Los Angeles International Airport (LAX) using high-frequency observational data obtained from the National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. 
+The dataset consists of five-minute interval weather measurements, providing a detailed temporal view of atmospheric conditions that can be aggregated to support daily forecasting tasks. 
+By leveraging this granular data, the study aims to capture short-term variability and improve the accuracy of daily maximum temperature predictions. 
+An XGBoost regression model is developed to model the relationship between meteorological features and daily high temperature, with an emphasis on evaluating its predictive performance in a localized airport environment. 
+This approach provides a practical framework for applying machine learning techniques to site-specific temperature forecasting using publicly available observational data.
 
-- Statistical Prediction of Minimum and Maximum Air Temperature in California and Western North America [@dias2018statistical]
-
-- XGBoost: A Scalable Tree Boosting System [@Chen_2016]
-
-- A Tutorial and Use Case Example of the eXtreme Gradient Boosting (XGBoost) Artificial Intelligence Algorithm for Drug Development Applications [@xgboost_tutorial]
-
-- Comparison of Average Temperature Prediction Based on XGBoost and Prophet Models [@Zhou_2023]
-
-- Machine Learning for Weather Forecasting: XGBoost vs SVM vs Random Forest in Predicting Temperature for Visakhapatnam [@Singh2023MachineLF]
+The primary objective of this study is to develop and evaluate an XGBoost-based model for predicting daily high temperatures at LAX using aggregated ASOS observational data. 
+Model performance is assessed using a comprehensive set of regression evaluation metrics, including MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
+In addition, the study examines feature importance to better understand the contribution of key meteorological variables to model predictions. 
+By focusing on a single, well-instrumented location and leveraging high-resolution data, this research aims to demonstrate the applicability of machine learning methods for localized temperature forecasting. 
+The findings contribute to the growing body of work on data-driven weather prediction and highlight the potential of XGBoost as a practical tool for operational forecasting tasks, consistent with prior statistical temperature prediction work in California and broader North America [@dias2018statistical].
 
 ## Methods
 
