@@ -1,7 +1,10 @@
 ---
-title: "Predicting Daily High Temperature Using XGBoost - Spring 2026 "
+title: "Predicting Daily High Temperature Using XGBoost - Summer 2026 "
 subtitle: "Los Angeles International Airport (LAX)"
-author: "Alex Lewis and David Moe (Advisor: Dr. Cohen)"
+author: 
+  - name: "Alex Lewis"
+  - name: "David Moe"
+  - name: "Advisor: Dr. Cohen"
 date: '`r Sys.Date()`'
 format:
   html:
