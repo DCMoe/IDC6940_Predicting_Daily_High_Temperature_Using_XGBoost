@@ -1,6 +1,6 @@
 ---
 title: "Predicting Daily High Temperature Using XGBoost - Summer 2026 "
-subtitle: "Los Angeles International Airport (LAX)"
+subtitle: "Los Angeles International Airport (KLAX)"
 author: 
   - name: "Alex Lewis"
   - name: "David Moe"
@@ -91,7 +91,7 @@ $$
 
 ## Analysis and Results
 
-### Data Exploration and Visualization
+### Data Exploration and Visualization - Example
 
 -   Describe your data sources and collection process.
 
@@ -101,37 +101,272 @@ $$
 
 A study was conducted to determine how...
 
-```{r, warning=FALSE, echo=T, message=FALSE}
-# loading packages 
-library(tidyverse)
-library(knitr)
-library(ggthemes)
-library(ggrepel)
-library(dslabs)
-```
 
-```{python}
-import pandas as pd
+### Data Exploration and Visualization
+
+***Section Under Construction***
+
+***Work In Progress***
+
+#### Data Sources and Collection Process
+
+The temperature data for this study were obtained from the National Oceanic and Atmospheric Administration (NOAA) National Center for Environmental Information (NCEI) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. The ASOS network provides automated, high-frequency weather observations from thousands of stations across the United States, including Los Angeles International Airport (KLAX). 
+
+The dataset used in this analysis consists of 5-minute interval observations for KLAX from February 1998 to May 2026. Variables include the date and time in UTC: `datetime_utc`, wind direction: `wind_dir`, wind speed: `wind_speed_kt`, wind gusts: `wind_gust_kt`, wind variation: `wind_var`, visibility: `visibility_sm`, weather conditions: `weather`, sky: `sky`, temperature in celsius: `temp_c`, dewpoint in celsius: `dewpoint_c`, rh something: `rh_pct`, altimeter readings: `altimeter_inhg`. For this capstone, the analysis focuses on the most recent five years of observations to ensure data quality and relevance to current climate conditions while maintaining a manageable dataset size for exploration and modeling.
+
+#### Initial Findings and Insights
+
+***The following is all placeholder text to remind me to fill this in.***
+
+*Initial exploration of the KLAX 5-minute temperature data reveals strong seasonal patterns consistent with the Mediterranean climate of Los Angeles, with warmer summers and cooler winters. The distribution of 5-minute temperature changes is tightly centered around zero, indicating that temperature typically evolves smoothly at this timescale, with occasional larger jumps during frontal transitions or rapid diurnal changes.*
+
+*Summary statistics and visualizations indicate a small but non-negligible proportion of missing values in some variables, particularly in older portions of the dataset. Extreme temperature values appear consistent with historical records for the region, with no obvious instrument failures or clear anomalies after basic filtering.*
+
+
+#### Unexpected Patterns and Anomalies
+
+*More placeholder text below*
+
+*During exploration, a few notable patterns emerged:*
+
+- *Short periods of flat or constant temperature values, likely corresponding to sensor maintenance or data gaps.*
+- *Occasional spikes in temperature change magnitude that may correspond to rapid weather transitions or measurement artifacts.*
+- *Slight asymmetry in the distribution of positive versus negative 5-minute temperature changes, suggesting a mild tendency for faster warming than cooling at the 5-minute scale.*
+
+*These observations guide subsequent preprocessing steps, including missing value handling, outlier detection, and feature engineering for the XGBoost model.*
+
+```{r, warning=FALSE, echo=T, message=FALSE}
+# Setup
+library(arrow)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(knitr)
 ```
 
 ```{r, warning=FALSE, echo=TRUE}
-# Load Data
-kable(head(murders))
+# Data Preparation for KLAX 5-minute ASOS Data
 
-ggplot1 = murders %>% ggplot(mapping = aes(x=population/10^6, y=total)) 
+# Inspect column names in the parquet file
+parquet_path <- "KLAX_5min_complete.parquet"
+df <- read_parquet(parquet_path)
 
-  ggplot1 + geom_point(aes(col=region), size = 4) +
-  geom_text_repel(aes(label=abb)) +
-  scale_x_log10() +
-  scale_y_log10() +
-  geom_smooth(formula = "y~x", method=lm,se = F)+
-  xlab("Populations in millions (log10 scale)") + 
-  ylab("Total number of murders (log10 scale)") +
-  ggtitle("US Gun Murders in 2010") +
-  scale_color_discrete(name = "Region")+
-      theme_bw()
-  
+# Print all column names
+colnames(df)
+```
 
+```{r}
+# Manually set column names
+ts_col <- "datetime_utc"
+temp_col <- "temp_c"
+
+df <- df %>%
+  mutate(timestamp = as_datetime(get(ts_col), tz = "UTC"))
+
+# Filter to last 5 years
+last_5_years <- df %>%
+  filter(timestamp >= (now(tzone = "UTC") - years(5)))
+
+cat("Number of observations after filtering to last 5 years:", nrow(last_5_years), "\n")
+
+last_5_years <- last_5_years %>%
+  arrange(timestamp) %>%
+  mutate(
+    temp = get(temp_col),
+    temp_change = temp - lag(temp)
+  )
+
+cat("Number of NA temp_change values:", sum(is.na(last_5_years$temp_change)), "\n")
+cat("Range of temp_change:", range(last_5_years$temp_change, na.rm = TRUE), "\n")
+
+# Remove first row with NA temp_change
+last_5_years <- last_5_years %>%
+  filter(!is.na(temp_change))
+
+cat("Number of observations after removing NA temp_change:", nrow(last_5_years), "\n")
+
+# Daily high temperature
+daily_high <- last_5_years %>%
+  mutate(date = as_date(timestamp)) %>%
+  group_by(date) %>%
+  summarise(
+    daily_high_temp = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(daily_high_temp))
+
+cat("Number of days with daily high temperature:", nrow(daily_high), "\n")
+
+# Diurnal data (last 2 years)
+diurnal_data <- last_5_years %>%
+  filter(timestamp >= (now(tzone = "UTC") - years(2))) %>%
+  mutate(hour = hour(timestamp))
+
+diurnal_avg <- diurnal_data %>%
+  group_by(hour) %>%
+  summarise(
+    avg_temp = mean(temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+
+```{r, warning=FALSE, echo=TRUE}
+# Visualization 1: Histogram of 5-minute temperature changes
+ggplot(last_5_years, aes(x = temp_change)) +
+  geom_histogram(
+    binwidth = 0.1,
+    fill = "steelblue",
+    color = "white",
+    alpha = 0.8
+  ) +
+  scale_x_continuous(breaks = seq(-2, 2, by = 0.5)) +
+  labs(
+    title = "Histogram of 5-Minute Temperature Changes at KLAX",
+    subtitle = "Most 5-minute changes are exactly 0°C; extreme changes are rare outliers",
+    x = "5-Minute Temperature Change (°C)",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  xlim(-3, 3)
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Proportion of zero changes and histogram of non-zero changes
+zero_changes <- last_5_years %>%
+  filter(temp_change == 0)
+
+nonzero_changes <- last_5_years %>%
+  filter(temp_change != 0)
+
+prop_zero <- nrow(zero_changes) / nrow(last_5_years)
+
+cat("Proportion of 5-minute intervals with exactly 0°C change:", prop_zero, "\n")
+cat("Percentage:", 100 * prop_zero, "%\n")
+
+# Histogram of non-zero changes only
+ggplot(nonzero_changes, aes(x = temp_change)) +
+  geom_histogram(
+    binwidth = 0.2,
+    fill = "darkorange",
+    color = "white",
+    alpha = 0.8
+  ) +
+  labs(
+    title = "Histogram of Non-Zero 5-Minute Temperature Changes at KLAX",
+    subtitle = sprintf("Proportion of zero changes: %.1f%%", 100 * prop_zero),
+    x = "5-Minute Temperature Change (°C)",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  xlim(-5, 5)
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Visualization 2: Daily high temperature time series (5 years)
+ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
+  geom_line(color = "darkorange", alpha = 0.8) +
+  labs(
+    title = "Daily High Temperature at KLAX (Last 5 Years)",
+    x = "Date",
+    y = "Daily High Temperature (°C)"
+  ) +
+  theme_minimal() +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Visualization 3: Monthly boxplot of daily high temperature
+daily_high_months <- daily_high %>%
+  mutate(month = month(date, label = TRUE, abbr = TRUE))
+
+ggplot(daily_high_months, aes(x = month, y = daily_high_temp, fill = month)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+  labs(
+    title = "Monthly Distribution of Daily High Temperature at KLAX",
+    x = "Month",
+    y = "Daily High Temperature (°C)"
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Visualization 4: Histogram of daily high temperature
+ggplot(daily_high, aes(x = daily_high_temp)) +
+  geom_histogram(binwidth = 0.5, fill = "forestgreen", color = "white", alpha = 0.8) +
+  labs(
+    title = "Histogram of Daily High Temperature at KLAX (Last 5 Years)",
+    x = "Daily High Temperature (°C)",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Visualization 5: Average diurnal temperature curve (by hour)
+ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
+  geom_line(color = "purple", size = 1.2) +
+  geom_point(color = "purple", size = 2) +
+  labs(
+    title = "Average Diurnal Temperature Curve at KLAX (Last 2 Years)",
+    x = "Hour of Day",
+    y = "Average Temperature (°C)"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = 0:23)
+```
+
+```{r, warning=FALSE, echo=TRUE}
+# Summary statistics and abnormal change flags for 5-minute temperature changes
+
+# Absolute temperature changes
+last_5_years <- last_5_years %>%
+  mutate(abs_temp_change = abs(temp_change))
+
+# Quantiles of absolute changes
+abs_q <- quantile(last_5_years$abs_temp_change, probs = c(0.5, 0.75, 0.9, 0.95, 0.99, 1.0))
+
+# Define abnormal threshold (99th percentile)
+abnormal_threshold <- abs_q["99%"]
+
+# Flag abnormal changes
+last_5_years <- last_5_years %>%
+  mutate(abnormal_change = abs_temp_change > abnormal_threshold)
+
+n_abnormal <- sum(last_5_years$abnormal_change)
+n_total <- nrow(last_5_years)
+pct_abnormal <- 100 * n_abnormal / n_total
+
+# Summary statistics table
+summary_stats <- tibble(
+  Statistic = c(
+    "Total observations",
+    "Mean absolute 5-min change (°C)",
+    "Median absolute 5-min change (°C)",
+    "75th percentile (°C)",
+    "90th percentile (°C)",
+    "95th percentile (°C)",
+    "99th percentile (°C) [abnormal threshold]",
+    "Maximum absolute 5-min change (°C)",
+    "Number of abnormal changes",
+    "Percentage of abnormal changes (%)"
+  ),
+  Value = c(
+    n_total,
+    mean(last_5_years$abs_temp_change, na.rm = TRUE),
+    median(last_5_years$abs_temp_change, na.rm = TRUE),
+    abs_q["75%"],
+    abs_q["90%"],
+    abs_q["95%"],
+    abs_q["99%"],
+    max(last_5_years$abs_temp_change, na.rm = TRUE),
+    n_abnormal,
+    pct_abnormal
+  )
+)
+
+summary_stats
 ```
 
 ### Modeling and Results
