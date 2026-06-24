@@ -91,22 +91,7 @@ $$
 
 ## Analysis and Results
 
-### Data Exploration and Visualization - Example
-
--   Describe your data sources and collection process.
-
--   Present initial findings and insights through visualizations.
-
--   Highlight unexpected patterns or anomalies.
-
-A study was conducted to determine how...
-
-
 ### Data Exploration and Visualization
-
-***Section Under Construction***
-
-***Work In Progress***
 
 ```{r, warning=FALSE, echo=T, message=FALSE}
 # Setup
@@ -119,6 +104,7 @@ library(patchwork)
 library(knitr)
 library(scales)
 library(tibble)
+library(gtsummary)
 ```
 
 ```{r, warning=FALSE, echo=TRUE}
@@ -146,7 +132,7 @@ reference_time <- ymd_hms("2026-05-01 00:00:00", tz = "UTC")
 last_5_years_pre<- df %>%
   filter(timestamp >= (reference_time - years(5)))
 
-cat("Number of observations after filtering to last 5 years:", nrow(last_5_years_pre), "\n")
+# cat("Number of observations after filtering to last 5 years:", nrow(last_5_years_pre), "\n")
 
 last_5_years <- last_5_years_pre %>%
   arrange(timestamp) %>%
@@ -157,14 +143,14 @@ last_5_years <- last_5_years_pre %>%
 
 na_temp <- sum(is.na(last_5_years$temp_change))
 
-cat("Number of NA temp_change values:", sum(is.na(last_5_years$temp_change)), "\n")
-cat("Range of temp_change:", range(last_5_years$temp_change, na.rm = TRUE), "\n")
+# cat("Number of NA temp_change values:", sum(is.na(last_5_years$temp_change)), "\n")
+# cat("Range of temp_change:", range(last_5_years$temp_change, na.rm = TRUE), "\n")
 
 # Remove first row with NA temp_change
 last_5_years <- last_5_years %>%
   filter(!is.na(temp_change))
 
-cat("Number of observations after removing NA temp_change:", nrow(last_5_years), "\n")
+# cat("Number of observations after removing NA temp_change:", nrow(last_5_years), "\n")
 
 # Daily high temperature
 daily_high <- last_5_years %>%
@@ -176,7 +162,7 @@ daily_high <- last_5_years %>%
   ) %>%
   filter(!is.na(daily_high_temp))
 
-cat("Number of days with daily high temperature:", nrow(daily_high), "\n")
+# cat("Number of days with daily high temperature:", nrow(daily_high), "\n")
 
 # Diurnal data (last 2 years)
 diurnal_data <- last_5_years %>%
@@ -235,6 +221,109 @@ For this analysis, the exploratory analysis was restricted to the most recent fi
 After filtering, @tbl-observations shows the resulting subset contains 436,937 5-minute observations, of which 436,292 remain after removing records with missing temperature-change values, along with 1,705 days for which daily high temperature could be computed.
 This subset preserves both the high temporal resolution of the original ASOS data and the seasonal coverage needed to support analysis of daily high temperature variability.
 
+#### Descriptive Statistics
+
+```{r, warning=FALSE, message=FALSE}
+#| label: tbl-descriptive_stats
+
+continuous_summary <- tibble(
+  Variable = c(
+    "Wind speed (kt)",
+    "Wind gust (kt)",
+    "Visibility (statute mi)",
+    "Air temperature (°C)",
+    "Dewpoint temperature (°C)",
+    "Relative humidity (%)",
+    "Altimeter (inHg)"
+  ),
+  N      = c(
+    sum(!is.na(last_5_years$wind_speed_kt)),
+    sum(!is.na(last_5_years$wind_gust_kt)),
+    sum(!is.na(last_5_years$visibility_sm)),
+    sum(!is.na(last_5_years$temp_c)),
+    sum(!is.na(last_5_years$dewpoint_c)),
+    sum(!is.na(last_5_years$rh_pct)),
+    sum(!is.na(last_5_years$altimeter_inhg))
+  ),
+  Mean   = c(
+    mean(last_5_years$wind_speed_kt,   na.rm = TRUE),
+    mean(last_5_years$wind_gust_kt,    na.rm = TRUE),
+    mean(last_5_years$visibility_sm,   na.rm = TRUE),
+    mean(last_5_years$temp_c,          na.rm = TRUE),
+    mean(last_5_years$dewpoint_c,      na.rm = TRUE),
+    mean(last_5_years$rh_pct,          na.rm = TRUE),
+    mean(last_5_years$altimeter_inhg,  na.rm = TRUE)
+  ),
+  SD     = c(
+    sd(last_5_years$wind_speed_kt,     na.rm = TRUE),
+    sd(last_5_years$wind_gust_kt,      na.rm = TRUE),
+    sd(last_5_years$visibility_sm,     na.rm = TRUE),
+    sd(last_5_years$temp_c,            na.rm = TRUE),
+    sd(last_5_years$dewpoint_c,        na.rm = TRUE),
+    sd(last_5_years$rh_pct,            na.rm = TRUE),
+    sd(last_5_years$altimeter_inhg,    na.rm = TRUE)
+  ),
+ Q1     = c(
+    quantile(last_5_years$wind_speed_kt,   0.25, na.rm = TRUE),
+    quantile(last_5_years$wind_gust_kt,    0.25, na.rm = TRUE),
+    quantile(last_5_years$visibility_sm,   0.25, na.rm = TRUE),
+    quantile(last_5_years$temp_c,          0.25, na.rm = TRUE),
+    quantile(last_5_years$dewpoint_c,      0.25, na.rm = TRUE),
+    quantile(last_5_years$rh_pct,          0.25, na.rm = TRUE),
+    quantile(last_5_years$altimeter_inhg,  0.25, na.rm = TRUE)
+  ),
+  Median = c(
+    median(last_5_years$wind_speed_kt,    na.rm = TRUE),
+    median(last_5_years$wind_gust_kt,     na.rm = TRUE),
+    median(last_5_years$visibility_sm,    na.rm = TRUE),
+    median(last_5_years$temp_c,           na.rm = TRUE),
+    median(last_5_years$dewpoint_c,       na.rm = TRUE),
+    median(last_5_years$rh_pct,           na.rm = TRUE),
+    median(last_5_years$altimeter_inhg,   na.rm = TRUE)
+  ),
+  Q3     = c(
+    quantile(last_5_years$wind_speed_kt,   0.75, na.rm = TRUE),
+    quantile(last_5_years$wind_gust_kt,    0.75, na.rm = TRUE),
+    quantile(last_5_years$visibility_sm,   0.75, na.rm = TRUE),
+    quantile(last_5_years$temp_c,          0.75, na.rm = TRUE),
+    quantile(last_5_years$dewpoint_c,      0.75, na.rm = TRUE),
+    quantile(last_5_years$rh_pct,          0.75, na.rm = TRUE),
+    quantile(last_5_years$altimeter_inhg,  0.75, na.rm = TRUE)
+  ),
+  Min    = c(
+    min(last_5_years$wind_speed_kt,    na.rm = TRUE),
+    min(last_5_years$wind_gust_kt,     na.rm = TRUE),
+    min(last_5_years$visibility_sm,    na.rm = TRUE),
+    min(last_5_years$temp_c,          na.rm = TRUE),
+    min(last_5_years$dewpoint_c,      na.rm = TRUE),
+    min(last_5_years$rh_pct,          na.rm = TRUE),
+    min(last_5_years$altimeter_inhg,  na.rm = TRUE)
+  ),
+  Max    = c(
+    max(last_5_years$wind_speed_kt,    na.rm = TRUE),
+    max(last_5_years$wind_gust_kt,     na.rm = TRUE),
+    max(last_5_years$visibility_sm,    na.rm = TRUE),
+    max(last_5_years$temp_c,           na.rm = TRUE),
+    max(last_5_years$dewpoint_c,       na.rm = TRUE),
+    max(last_5_years$rh_pct,           na.rm = TRUE),
+    max(last_5_years$altimeter_inhg,   na.rm = TRUE)
+  )
+)
+
+knitr::kable(
+  continuous_summary,
+  caption = "Descriptive statistics for KLAX 5-minute meteorological variables over the last five years.",
+  digits = 2
+)
+```
+
+The descriptive statistics of the selected continuous variables in @tbl-descriptive_stats indicate that most predictors are well-behaved but not strictly Gaussian, with moderate skewness, truncation, and differing scales across variables, which supports the use of a flexible, nonparametric model such as XGBoost. 
+Wind speed and gusts show right-tailed behavior with occasional stronger events, while relative humidity exhibits a broader spread and occasional very dry conditions. 
+Visibility is heavily concentrated at its upper bound (10 statute miles), creating a pronounced ceiling effect, and altimeter readings are tightly clustered with minimal variance. 
+In combination, these features form a predictor set with mixed distributional shapes, bounded ranges, and differing levels of measurement frequency, such as the smaller number of observations for gusts, making tree-based gradient boosting particularly suitable because it does not rely on linearity or normality assumptions and handles non-linear interactions and threshold effects naturally.
+
+From a preprocessing standpoint, the ranges and standard deviations suggest that standard feature scaling or normalization can be used to stabilize training without requiring aggressive transformations of each variable, further aligning with standard XGBoost workflows. Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability and are likely to provide strong predictive signal. XGBoost can also accommodate the reduced sample size for wind gusts, by learning optimal directions for missing values in the tree structure rather than requiring imputation strategies. Taken together, these descriptive statistics justify the choice of XGBoost as an appropriate modeling framework for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.
+
 #### Initial Findings and Insights
 
 Exploratory analysis of the filtered KLAX dataset reveals a clear and persistent annual cycle in daily high temperature. 
@@ -271,7 +360,7 @@ This seasonal structure is reinforced by the monthly boxplots in @fig-monthly-bo
 
 ```{r, warning=FALSE, echo=TRUE}
 #| label: fig-monthly-boxplot
-#| fig-cap: "Monthly distribution of daily high temperature at KLAX over the last five years. Median temperatures rise from winter to late summer and decline through autumn, with warm-season months also showing more upper-end outliers."
+#| fig-cap: "Monthly distribution of daily high temperature at KLAX over the last five years. Median temperatures rise from winter to late summer and decline through autumn."
 
 # Visualization 2: Monthly boxplot of daily high temperature
 daily_high_months <- daily_high %>%
@@ -299,13 +388,106 @@ ggsave(
 )
 ```
 
+@fig-daily-high-ranges below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.
+
+```{r, warning=FALSE, message=FALSE}
+#| label: fig-daily-high-ranges
+#| fig-cap: "Daily high temperature at KLAX over the annual cycle, showing daily min, max, mean, and interquartile range values over the last five years. Mean highs increase from winter into late summer, peak in early September, and then decline through autumn."
+
+# Add year and day-of-year
+daily_high_doy <- daily_high %>%
+  mutate(
+    year = year(date),
+    doy  = yday(date)
+  ) %>%
+  filter(doy <= 365)
+
+# Compute daily statistics across the last 5 years
+doy_stats <- daily_high_doy %>%
+  group_by(doy) %>%
+  summarise(
+    mean_high = mean(daily_high_temp, na.rm = TRUE),
+    q1_high   = quantile(daily_high_temp, 0.25, na.rm = TRUE),
+    q3_high   = quantile(daily_high_temp, 0.75, na.rm = TRUE),
+    min_high  = min(daily_high_temp, na.rm = TRUE),
+    max_high  = max(daily_high_temp, na.rm = TRUE),
+    .groups   = "drop"
+  )
+
+# Approximate month positions for labeling
+month_starts <- tibble(
+  doy = c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335),
+  month = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+)
+
+# Visualization 3: Daily High Temperature at KLAX by Day of Year
+p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
+  # Interquartile range ribbon
+  geom_ribbon(
+    aes(ymin = q1_high, ymax = q3_high),
+    fill = "skyblue3",
+    alpha = 0.35
+  ) +
+  # Min/max envelope lines 
+  geom_line(
+    aes(y = min_high, color = "Min"),
+    linewidth = 0.4,
+    linetype = "dashed"
+  ) +
+  geom_line(
+    aes(y = max_high, color = "Max"),
+    linewidth = 0.4,
+    linetype = "dashed"
+  ) +
+  # Mean daily high line 
+  geom_line(
+    aes(y = mean_high, color = "Mean"),
+    linewidth = 0.9
+  ) +
+  scale_color_manual(
+    name = "Statistic: ",
+    values = c(
+      "Min"  = "gray50",
+      "Max"  = "gray50",
+      "Mean" = "firebrick3"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = month_starts$doy,
+    labels = month_starts$month,
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    title = "Daily High Temperature at KLAX by Day of Year",
+    x = "Month",
+    y = "Daily high temperature (°C)"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor  = element_blank(),
+    legend.position   = "bottom"
+  )
+
+p_daily_high_ranges
+
+output_dir <- "output"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+ggsave(
+  filename = file.path(output_dir, "fig3_daily_high_ranges.png"),
+  plot = p_daily_high_ranges,
+  width = 7, height = 5, dpi = 300
+)
+```
+
 The overall distribution of daily high temperatures in @fig-daily-high-hist appears to be normally distributed and concentrated within a moderate range, with most days falling between approximately 16 °C and 24 °C and relatively few very cool or very hot days. 
 
 ```{r, warning=FALSE, echo=TRUE}
 #| label: fig-daily-high-hist
 #| fig-cap: "Histogram of daily high temperatures at KLAX over the last five years. Most daily highs fall within a moderate range, while very hot and very cool days occur less frequently."
 
-# Visualization 3: Histogram of daily high temperature
+# Visualization 4: Histogram of daily high temperature
 p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
   geom_histogram(binwidth = 1, fill = "forestgreen", color = "white", alpha = 0.8) +
   labs(
@@ -321,7 +503,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig3_hist_daily_high_temps.png"),
+  filename = file.path(output_dir, "fig4_hist_daily_high_temps.png"),
   plot = p_hist_daily,
   width = 7, height = 5, dpi = 300
 )
@@ -336,7 +518,7 @@ The histogram of all 5-minute temperature changes in @fig-temp-change-all shows 
 #| label: fig-temp-change-all
 #| fig-cap: "Histogram of all 5-minute temperature changes at KLAX over the last five years. The distribution is strongly concentrated at 0 °C, indicating that most short-term intervals show no measurable temperature change."
 
-# Visualization 4: Histogram of 5-minute temperature changes
+# Visualization 5: Histogram of 5-minute temperature changes
 p_hist_change <- ggplot(last_5_years, aes(x = temp_change)) +
   geom_histogram(
     binwidth = 0.1,
@@ -360,7 +542,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig4_5min_temp_change_hist.png"),
+  filename = file.path(output_dir, "fig5_5min_temp_change_hist.png"),
   plot = p_hist_change,
   width = 7, height = 5, dpi = 300
 )
@@ -382,7 +564,7 @@ prop_zero <- nrow(zero_changes) / nrow(last_5_years)
 cat("Proportion of 5-minute intervals with exactly 0°C change:", prop_zero, "\n")
 cat("Percentage:", 100 * prop_zero, "%\n")
 
-# Histogram of non-zero changes only
+# Visualization 6: Histogram of non-zero changes only
 p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change)) +
   geom_histogram(
     binwidth = 0.2,
@@ -405,7 +587,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig5_5min_nonzero_change_hist.png"),
+  filename = file.path(output_dir, "fig6_5min_nonzero_change_hist.png"),
   plot = p_non_zero_hist,
   width = 7, height = 5, dpi = 300
 )
@@ -486,7 +668,7 @@ The diurnal cycle plot in @fig-diurnal-cycle provides an additional view of the 
 #| label: fig-diurnal-cycle
 #| fig-cap: "Average diurnal temperature cycle at KLAX based on the last two years of 5-minute observations. Temperatures are coolest in the early morning, rise through the morning hours, peak in the early afternoon, and then gradually decline into the evening."
 
-# Visualization 6: Average diurnal temperature curve (by hour)
+# Visualization 7: Average diurnal temperature curve (by hour)
 p_diurnal <- ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
   geom_line(color = "purple", size = 1.2) +
   geom_point(color = "purple", size = 2) +
@@ -504,7 +686,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig6_diurnal_cycle.png"),
+  filename = file.path(output_dir, "fig7_diurnal_cycle.png"),
   plot = p_diurnal,
   width = 7, height = 5, dpi = 300
 )
@@ -531,7 +713,7 @@ This figure shows that the ASOS dataset captures coherent meteorological relatio
 #| label: fig-multivariable-window
 #| fig-cap: "Multi-variable 5-minute meteorological observations at KLAX from July 22 to July 23, 2025. The figure shows short-term co-variation in temperature, dewpoint, relative humidity, wind speed and gusts, visibility, and altimeter pressure over a 36-hour period."
 
-# Visualization 7: Multi-panel meteorological plot
+# Visualization 8: Multi-panel meteorological plot
 
 # Select 36 hour time frame
 start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
@@ -649,7 +831,7 @@ multi_plot <- (p1 / p2 / p3 / p4 / p5) +
 multi_plot
 
 ggsave(
-  filename = file.path(output_dir, "fig7_multivariable_recent36h.png"),
+  filename = file.path(output_dir, "fig8_multivariable_recent36h.png"),
   plot = multi_plot,
   width = 11,
   height = 14,
@@ -661,10 +843,10 @@ ggsave(
 
 Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. 
 The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. 
-At the same time, the presence of a small fraction of abnormal five-minute temperature jumps suggests that careful preprocessing and feature construction are important to reduce sensitivity to outliers.
+At the same time, the descriptive statistics in @tbl-descriptive_stats suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model. 
 
 These observations directly inform later stages of the project. 
-Seasonal and diurnal patterns visible in @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-diurnal-cycle motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in @fig-multivariable-window suggest that aggregated meteorological features may improve predictive performance. 
+Seasonal and diurnal patterns visible in @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-diurnal-cycle motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in @fig-multivariable-window suggest that the aggregated features may improve predictive performance. 
 Consequently, the data exploration stage not only describes the structure of the KLAX record but also provides a practical foundation for preprocessing, feature engineering, and model evaluation in the XGBoost framework.
 
 ### Modeling and Results
