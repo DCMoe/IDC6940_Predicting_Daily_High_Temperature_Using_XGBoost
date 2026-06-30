@@ -64,30 +64,30 @@ The findings contribute to the growing body of work on data-driven weather predi
 
 ## Methods
 
--   Detail the models or algorithms used.
+The prediction task is to forecast the daily maximum air temperature, $T_{\max}$, at weather station KLAX from surface observations. 
+The relationship between the predictors and $T_{\max}$, is highly interaction‑dependent. 
+For example, the cooling associated with west‑to‑east wind gusts varies by hour of the day and season, so the marginal effect of any one variable is not constant across the others. 
+As a result, the conditional structure cannot be captured by additive linear terms alone. 
+This analysis therefore employs gradient‑boosted regression trees as implemented in XGBoost [@Chen_2016], which are well suited to modeling nonlinear, interacting predictors in tabular meteorological data.
 
--   Justify your choices based on the problem and data.
-
-*The common non-parametric regression model is*
-$Y_i = m(X_i) + \varepsilon_i$*, where* $Y_i$ *can be defined as the sum
-of the regression function value* $m(x)$ *for* $X_i$*. Here* $m(x)$ *is
-unknown and* $\varepsilon_i$ *some errors. With the help of this
-definition, we can create the estimation for local averaging i.e.*
-$m(x)$ *can be estimated with the product of* $Y_i$ *average and* $X_i$
-*is near to* $x$*. In other words, this means that we are discovering
-the line through the data points with the help of surrounding data
-points. The estimation formula is printed below [@R-base]:*
+We construct an additive ensemble of $K$ regression trees $f_k$ drawn from the space $\mathcal{F}$,
 
 $$
-M_n(x) = \sum_{i=1}^{n} W_n (X_i) Y_i  \tag{1}
-$$$W_n(x)$ *is the sum of weights that belongs to all real numbers.
-Weights are positive numbers and small if* $X_i$ *is far from* $x$*.*
+\hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F}, \tag{1}
+$$
 
-*Another equation:*
+where $x_i$ denotes the predictor vector for observation $i$ and $\hat{y}_i$ is the corresponding model prediction.
+The ensemble is fitted by stagewise minimization of a regularized objective that penalizes both the number of leaves and the magnitude of leaf prediction scores in each tree:
 
 $$
-y_i = \beta_0 + \beta_1 X_1 +\varepsilon_i
+\mathcal{L} = \sum_{i} l(\hat{y}_i, y_i) + \sum_{k=1}^{K} \left[ \gamma T_k + \tfrac{1}{2}\lambda \lVert w_k \rVert^2 \right]. \tag{2}
 $$
+where $l(\hat{y}_i, y_i)$ is the loss function (squared error in this study), $T_k$ is the number of leaves in tree $k$, and $w_k$ is the vector of leaf scores for that tree.
+
+This method suits our data for three reasons. 
+First, it does not require the predictors to share common units or scales; variables such as wind speed and air temperature can interact naturally within the trees. 
+Second, XGBoost includes explicit handling of missing values, so gaps in the observational record (e.g., sensor failures or unmeasured gusts) can be accommodated without discarding entire days or imputing values. 
+Third, the fitted model can report which conditions contributed most to its predictions through feature importance and related diagnostics, allowing us to verify that the inferred drivers of high temperatures align with established meteorological cause‑and‑effect relationships.
 
 ## Analysis and Results
 
