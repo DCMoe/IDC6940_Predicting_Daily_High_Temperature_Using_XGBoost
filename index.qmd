@@ -112,10 +112,10 @@ library(gtsummary)
 
 # Inspect column names in the parquet file
 parquet_path <- "KLAX_5min_complete.parquet"
-df <- read_parquet(parquet_path)
+df_KLAX <- read_parquet(parquet_path)
 
 # Print all column names
-colnames(df)
+colnames(df_KLAX)
 ```
 
 ```{r, warning=FALSE, echo=TRUE}
@@ -123,7 +123,7 @@ colnames(df)
 ts_col <- "datetime_utc"
 temp_col <- "temp_c"
 
-df <- df %>%
+df <- df_KLAX %>%
   mutate(timestamp = as_datetime(get(ts_col), tz = "UTC"))
 
 # Filter to last 5 years
@@ -333,7 +333,6 @@ The time series of daily high temperatures over the last five years in @fig-dail
 #| label: fig-daily-high-ts
 #| fig-cap: "Daily high temperature at KLAX over the last five years."
 
-# Visualization 1: Daily high temperature time series (5 years)
 p_daily_high <- ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
   geom_line(color = "darkorange", alpha = 0.8) +
   labs(
@@ -350,7 +349,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig1_daily_high_temp_ts.png"),
+  filename = file.path(output_dir, "fig_daily_high_temp_ts.png"),
   plot = p_daily_high,
   width = 7, height = 5, dpi = 300
 )
@@ -362,7 +361,6 @@ This seasonal structure is reinforced by the monthly boxplots in @fig-monthly-bo
 #| label: fig-monthly-boxplot
 #| fig-cap: "Monthly distribution of daily high temperature at KLAX over the last five years. Median temperatures rise from winter to late summer and decline through autumn."
 
-# Visualization 2: Monthly boxplot of daily high temperature
 daily_high_months <- daily_high %>%
   mutate(month = month(date, label = TRUE, abbr = TRUE))
 
@@ -382,7 +380,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig2_boxplot.png"),
+  filename = file.path(output_dir, "fig_boxplot.png"),
   plot = p_boxplot,
   width = 7, height = 5, dpi = 300
 )
@@ -421,7 +419,6 @@ month_starts <- tibble(
             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 )
 
-# Visualization 3: Daily High Temperature at KLAX by Day of Year
 p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
   # Interquartile range ribbon
   geom_ribbon(
@@ -475,7 +472,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig3_daily_high_ranges.png"),
+  filename = file.path(output_dir, "fig_daily_high_ranges.png"),
   plot = p_daily_high_ranges,
   width = 7, height = 5, dpi = 300
 )
@@ -487,7 +484,6 @@ The overall distribution of daily high temperatures in @fig-daily-high-hist appe
 #| label: fig-daily-high-hist
 #| fig-cap: "Histogram of daily high temperatures at KLAX over the last five years. Most daily highs fall within a moderate range, while very hot and very cool days occur less frequently."
 
-# Visualization 4: Histogram of daily high temperature
 p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
   geom_histogram(binwidth = 1, fill = "forestgreen", color = "white", alpha = 0.8) +
   labs(
@@ -503,7 +499,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig4_hist_daily_high_temps.png"),
+  filename = file.path(output_dir, "fig_hist_daily_high_temps.png"),
   plot = p_hist_daily,
   width = 7, height = 5, dpi = 300
 )
@@ -518,7 +514,6 @@ The histogram of all 5-minute temperature changes in @fig-temp-change-all shows 
 #| label: fig-temp-change-all
 #| fig-cap: "Histogram of all 5-minute temperature changes at KLAX over the last five years. The distribution is strongly concentrated at 0 °C, indicating that most short-term intervals show no measurable temperature change."
 
-# Visualization 5: Histogram of 5-minute temperature changes
 p_hist_change <- ggplot(last_5_years, aes(x = temp_change)) +
   geom_histogram(
     binwidth = 0.1,
@@ -542,7 +537,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig5_5min_temp_change_hist.png"),
+  filename = file.path(output_dir, "fig_5min_temp_change_hist.png"),
   plot = p_hist_change,
   width = 7, height = 5, dpi = 300
 )
@@ -564,7 +559,6 @@ prop_zero <- nrow(zero_changes) / nrow(last_5_years)
 cat("Proportion of 5-minute intervals with exactly 0°C change:", prop_zero, "\n")
 cat("Percentage:", 100 * prop_zero, "%\n")
 
-# Visualization 6: Histogram of non-zero changes only
 p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change)) +
   geom_histogram(
     binwidth = 0.2,
@@ -587,13 +581,108 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig6_5min_nonzero_change_hist.png"),
+  filename = file.path(output_dir, "fig_5min_nonzero_change_hist.png"),
   plot = p_non_zero_hist,
   width = 7, height = 5, dpi = 300
 )
 ```
 
 This pattern is consistent with the summary statistics in @tbl-temp-summary: approximately 70.76% of five-minute intervals show exactly 0 °C change, the mean absolute five-minute change is 0.17 °C, the median absolute change is 0 °C, and the 75th percentile is only 0.5 °C, indicating that short-term temperature changes at KLAX are typically gradual rather than abrupt.
+
+```{r, warning=FALSE, echo=TRUE}
+#| label: fig-3h-temp-change
+#| fig-cap: "Distribution of 3-hour temperature changes from 5-minute observations, 2000-2026"
+
+d3 <- df_KLAX
+
+d3 <- d3 %>%
+  mutate(t3 = lag(datetime_utc, 36),
+         temp_lag = lag(temp_c, 36),
+         delta = temp_c - temp_lag) %>%
+  filter(as.numeric(datetime_utc - t3, units = "mins") == 180, !is.na(delta))
+
+h3_temp_change <- ggplot(d3, aes(delta)) +
+  geom_histogram(binwidth = 1, boundary = 0, fill = "steelblue", colour = "white") +
+  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+  coord_cartesian(xlim = c(-10, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Histogram of 3-hour Temperature Changes at LAX",
+    subtitle = "Distribution of 3-hour temperature changes from 5-minute observations, 2000-2026",
+    x = "Temperature change over 3 hours (°C)",
+    y = "Number of 3-hour periods",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, colour = "grey40"),
+    plot.caption = element_text(size = 8, colour = "grey50")
+  )
+
+h3_temp_change
+
+output_dir <- "output"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+ggsave(
+  filename = file.path(output_dir, "fig_3h_temp_change.png"),
+  plot = h3_temp_change,
+  width = 7, height = 5, dpi = 300
+)
+```
+
+```{r, warning=FALSE, echo=TRUE}
+#| label: fig-3h-wind-change
+#| fig-cap: "3-hour temperature change following gust observations, 2000-2026"
+
+g <- df_KLAX
+
+g <- g %>%
+  mutate(temp_future = lead(temp_c, 36),
+         t_future = lead(datetime_utc, 36),
+         dT = temp_future - temp_c,
+         wd = as.numeric(wind_dir)) %>%
+  filter(!is.na(wind_gust_kt), wind_gust_kt < 100,
+         !is.na(wd), !is.na(dT),
+         as.numeric(t_future - datetime_utc, units = "mins") == 180,
+         abs(dT) <= 10) %>%
+  mutate(group = case_when(
+    wd >= 210 & wd <= 330 ~ "Westerly gusts (west to east)",
+    wd >= 30  & wd <= 150 ~ "Easterly gusts (east to west)",
+    TRUE ~ NA_character_)) %>%
+  filter(!is.na(group))
+
+h3_wind_change <- ggplot(g, aes(dT, fill = group)) +
+  geom_histogram(binwidth = 1, boundary = 0, position = "identity",
+                 alpha = 0.6, colour = "white") +
+  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+  coord_cartesian(xlim = c(-10, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_manual(values = c("Westerly gusts (west to east)" = "lightblue",
+                               "Easterly gusts (east to west)" = "red")) +
+  labs(title = "Temperature Change After Gusts at LAX: Onshore vs Offshore",
+       subtitle = "3-hour temperature change following gust observations, 2000-2026",
+       x = "Temperature change over 3 hours (°C)",
+       y = "Number of gust observations",
+       fill = NULL) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14),
+        plot.subtitle = element_text(size = 10, colour = "grey40"),
+        plot.caption = element_text(size = 8, colour = "grey50"),
+        legend.position = "top")
+
+h3_wind_change
+
+output_dir <- "output"
+if (!dir.exists(output_dir)) dir.create(output_dir)
+
+ggsave(
+  filename = file.path(output_dir, "fig_3h_wind_change.png"),
+  plot = h3_wind_change,
+  width = 7, height = 5, dpi = 300
+)
+```
 
 ```{r, warning=FALSE, echo=TRUE}
 #| label: tbl-temp-summary
@@ -668,7 +757,6 @@ The diurnal cycle plot in @fig-diurnal-cycle provides an additional view of the 
 #| label: fig-diurnal-cycle
 #| fig-cap: "Average diurnal temperature cycle at KLAX based on the last two years of 5-minute observations. Temperatures are coolest in the early morning, rise through the morning hours, peak in the early afternoon, and then gradually decline into the evening."
 
-# Visualization 7: Average diurnal temperature curve (by hour)
 p_diurnal <- ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
   geom_line(color = "purple", size = 1.2) +
   geom_point(color = "purple", size = 2) +
@@ -686,7 +774,7 @@ output_dir <- "output"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
 ggsave(
-  filename = file.path(output_dir, "fig7_diurnal_cycle.png"),
+  filename = file.path(output_dir, "fig_diurnal_cycle.png"),
   plot = p_diurnal,
   width = 7, height = 5, dpi = 300
 )
@@ -713,7 +801,6 @@ This figure shows that the ASOS dataset captures coherent meteorological relatio
 #| label: fig-multivariable-window
 #| fig-cap: "Multi-variable 5-minute meteorological observations at KLAX from July 22 to July 23, 2025. The figure shows short-term co-variation in temperature, dewpoint, relative humidity, wind speed and gusts, visibility, and altimeter pressure over a 36-hour period."
 
-# Visualization 8: Multi-panel meteorological plot
 
 # Select 36 hour time frame
 start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
@@ -831,7 +918,7 @@ multi_plot <- (p1 / p2 / p3 / p4 / p5) +
 multi_plot
 
 ggsave(
-  filename = file.path(output_dir, "fig8_multivariable_recent36h.png"),
+  filename = file.path(output_dir, "fig_multivariable_recent36h.png"),
   plot = multi_plot,
   width = 11,
   height = 14,
