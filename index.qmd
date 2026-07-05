@@ -50,7 +50,7 @@ Additionally, comparative analyses of machine learning algorithms highlight the 
 Despite these advances, many studies focus on regional or large-scale forecasting problems, leaving opportunities for more localized, site-specific modeling of daily temperature using high-frequency observational data. 
 XGBoost has also been documented in tutorial and use-case contexts for its implementation and interpretability in applied machine learning problems [@xgboost_tutorial].
 
-This study focuses on predicting daily high temperatures at Los Angeles International Airport (LAX) using high-frequency observational data obtained from the National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. 
+This study focuses on predicting daily high temperatures at Los Angeles International Airport (KLAX) station using high-frequency observational data obtained from the National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. 
 The dataset consists of five-minute interval weather measurements, providing a detailed temporal view of atmospheric conditions that can be aggregated to support daily forecasting tasks [@Khan_2025_MultiOutputTemp]. 
 By leveraging this granular data, the study aims to capture short-term variability and improve the accuracy of daily maximum temperature predictions. 
 An XGBoost regression model is developed to model the relationship between meteorological features and daily high temperature, with an emphasis on evaluating its predictive performance in a localized airport environment. 
@@ -59,7 +59,7 @@ This approach provides a practical framework for applying machine learning techn
 The primary objective of this study is to develop and evaluate an XGBoost-based model for predicting daily high temperatures at LAX using aggregated ASOS observational data. 
 Model performance is assessed using a comprehensive set of regression evaluation metrics, including MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
 In addition, the study examines feature importance to better understand the contribution of key meteorological variables to model predictions. 
-By focusing on a single, well-instrumented location and leveraging high-resolution data, this research aims to demonstrate the applicability of machine learning methods for localized temperature forecasting. 
+By focusing on a single location, KLAX, and leveraging high-resolution data, this research aims to demonstrate the applicability of XGBoost for localized temperature forecasting. 
 The findings contribute to the growing body of work on data-driven weather prediction and highlight the potential of XGBoost as a practical tool for operational forecasting tasks, consistent with prior statistical temperature prediction work in California and broader North America [@dias2018statistical].
 
 ## Methods
@@ -97,62 +97,137 @@ Third, the fitted model can report which conditions contributed most to its pred
 
 The temperature data used in this study were obtained from the National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network [@asos_dataset_noaa]. 
 ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. 
-The dataset used here consists of 5-minute interval observations for KLAX from February 1998 through May 2026 and includes variables such as timestamp (`datetime_utc`), wind direction (`wind_dir`), wind speed (`wind_speed_kt`), wind gust (`wind_gust_kt`), visibility (`visibility_sm`), weather and sky condition fields, temperature (`temp_c`), dewpoint (`dewpoint_c`), relative humidity (`rh_pct`), and altimeter pressure (`altimeter_inhg`).
+The dataset used here consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables such as timestamp (`datetime_utc`), wind direction (`wind_dir`), wind speed (`wind_speed_kt`), wind gust (`wind_gust_kt`), visibility (`visibility_sm`), weather and sky condition fields, temperature (`temp_c`), dewpoint (`dewpoint_c`), relative humidity (`rh_pct`), and altimeter pressure (`altimeter_inhg`).
 
-```{r, warning=FALSE, echo=T, message=FALSE}
-# Setup
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Setup Packages
+# =========================================================
+# Load the packages used for data import, transformation,
+# visualization, table output, and panel composition.
+
 library(arrow)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(knitr)
 library(patchwork)
-library(knitr)
 library(scales)
 library(tibble)
-library(gtsummary)
 
-# Data Preparation for KLAX 5-minute ASOS Data
+# =========================================================
+# Setup Paths
+# =========================================================
+# Define the source file path, figure output directory, and
+# fixed reference date used to construct the recent 5-year window.
 
-# Inspect column names in the parquet file
 parquet_path <- "KLAX_5min_complete.parquet"
-df_KLAX <- read_parquet(parquet_path)
+output_dir <- "output"
+reference_time <- ymd_hms("2026-06-07 23:25:00", tz = "UTC")
 
-# Manually set column names
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
+# =========================================================
+# Import Data
+# =========================================================
+# Read the full KLAX parquet file and standardize the variable
+# types needed for tables, figures, and derived calculations.
+
 ts_col <- "datetime_utc"
 temp_col <- "temp_c"
 
-df <- df_KLAX %>%
-  mutate(timestamp = as_datetime(get(ts_col), tz = "UTC"))
+df_raw <- read_parquet(parquet_path)
 
-# Filter to last 5 years
-reference_time <- ymd_hms("2026-05-01 00:00:00", tz = "UTC")
-
-last_5_years_pre<- df %>%
-  filter(timestamp >= (reference_time - years(5)))
-
-# cat("Number of observations after filtering to last 5 years:", nrow(last_5_years_pre), "\n")
-
-last_5_years <- last_5_years_pre %>%
-  arrange(timestamp) %>%
+df_all <- df_raw %>%
   mutate(
-    temp = get(temp_col),
-    temp_change = temp - lag(temp)
+    timestamp      = as_datetime(.data[[ts_col]], tz = "UTC"),
+    temp           = as.numeric(.data[[temp_col]]),
+    dewpoint_c     = as.numeric(dewpoint_c),
+    rh_pct         = as.numeric(rh_pct),
+    wind_dir_deg   = as.numeric(wind_dir),
+    wind_speed_kt  = as.numeric(wind_speed_kt),
+    wind_gust_kt   = as.numeric(wind_gust_kt),
+    visibility_sm  = as.numeric(visibility_sm),
+    altimeter_inhg = as.numeric(altimeter_inhg)
+  ) %>%
+  mutate(
+    visibility_sm = ifelse(is.finite(visibility_sm), visibility_sm, NA_real_)
+  ) %>%
+  arrange(timestamp)
+
+# =========================================================
+# Derive Variables
+# =========================================================
+# Create the short-term and 3-hour temperature-change fields,
+# plus wind-direction groupings used in the distribution analyses.
+
+df_all <- df_all %>%
+  mutate(
+    temp_change_5min = temp - lag(temp),
+    abs_temp_change_5min = abs(temp_change_5min),
+    timestamp_lag_3h = lag(timestamp, 36),
+    temp_lag_3h = lag(temp, 36),
+    temp_change_3h = temp - temp_lag_3h,
+    timestamp_future_3h = lead(timestamp, 36),
+    temp_future_3h = lead(temp, 36),
+    temp_change_next_3h = temp_future_3h - temp,
+    wind_group = case_when(
+      wind_dir_deg >= 210 & wind_dir_deg <= 330 ~ "West winds",
+      wind_dir_deg >= 30 & wind_dir_deg <= 150 ~ "East winds",
+      TRUE ~ NA_character_
+    ),
+    gust_wind_group = case_when(
+      wind_dir_deg >= 210 & wind_dir_deg <= 330 ~ "Westerly gusts (west to east)",
+      wind_dir_deg >= 30 & wind_dir_deg <= 150 ~ "Easterly gusts (east to west)",
+      TRUE ~ NA_character_
+    )
   )
 
-na_temp <- sum(is.na(last_5_years$temp_change))
+# =========================================================
+# Build Subsets (Full Record)
+# =========================================================
+# Create full-record subsets for climatology and temperature-change
+# analyses. Exploratory work uses the full 2000–2026 KLAX record.
 
-# cat("Number of NA temp_change values:", sum(is.na(last_5_years$temp_change)), "\n")
-# cat("Range of temp_change:", range(last_5_years$temp_change, na.rm = TRUE), "\n")
+df_full <- df_all %>%
+  filter(!is.na(temp))
 
-# Remove first row with NA temp_change
-last_5_years <- last_5_years %>%
-  filter(!is.na(temp_change))
+df_5min_change_all <- df_all %>%
+  filter(!is.na(temp_change_5min))
 
-# cat("Number of observations after removing NA temp_change:", nrow(last_5_years), "\n")
+df_3h_change_all <- df_all %>%
+  filter(
+    !is.na(temp_change_3h),
+    as.numeric(timestamp - timestamp_lag_3h, units = "mins") == 180
+  )
 
-# Daily high temperature
-daily_high <- last_5_years %>%
+df_3h_gust_change <- df_all %>%
+  filter(
+    !is.na(wind_gust_kt),
+    wind_gust_kt < 100,
+    !is.na(temp_change_next_3h),
+    !is.na(gust_wind_group),
+    as.numeric(timestamp_future_3h - timestamp, units = "mins") == 180,
+    abs(temp_change_next_3h) <= 10
+  )
+
+zero_changes <- df_5min_change_all %>%
+  filter(temp_change_5min == 0)
+
+nonzero_changes <- df_5min_change_all %>%
+  filter(temp_change_5min != 0)
+
+prop_zero <- nrow(zero_changes) / nrow(df_5min_change_all)
+
+# =========================================================
+# Build Daily High Data
+# =========================================================
+# Build daily high, monthly, and day-of-year summary datasets
+# for the visualizations.
+
+daily_high <- df_full %>%
   mutate(date = as_date(timestamp)) %>%
   group_by(date) %>%
   summarise(
@@ -161,52 +236,135 @@ daily_high <- last_5_years %>%
   ) %>%
   filter(!is.na(daily_high_temp))
 
-# cat("Number of days with daily high temperature:", nrow(daily_high), "\n")
+daily_high_months <- daily_high %>%
+  mutate(month = month(date, label = TRUE, abbr = TRUE))
 
-# Diurnal data (last 2 years)
-diurnal_data <- last_5_years %>%
-  filter(timestamp >= (now(tzone = "UTC") - years(2))) %>%
-  mutate(hour = hour(timestamp))
+daily_high_doy <- daily_high %>%
+  mutate(
+    year = year(date),
+    doy = yday(date)
+  ) %>%
+  filter(doy <= 365)
 
-diurnal_avg <- diurnal_data %>%
+doy_stats <- daily_high_doy %>%
+  group_by(doy) %>%
+  summarise(
+    mean_high = mean(daily_high_temp, na.rm = TRUE),
+    q1_high = quantile(daily_high_temp, 0.25, na.rm = TRUE),
+    q3_high = quantile(daily_high_temp, 0.75, na.rm = TRUE),
+    min_high = min(daily_high_temp, na.rm = TRUE),
+    max_high = max(daily_high_temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+day_of_year_month_starts <- tibble(
+  doy = c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335),
+  month = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+)
+
+# =========================================================
+# Build Diurnal Data
+# =========================================================
+# Compute the average hourly temperature cycle using the same
+# 5-year window used for the recent-climatology figures.
+
+diurnal_avg <- df_full %>%
+  mutate(hour = hour(timestamp)) %>%
   group_by(hour) %>%
   summarise(
     avg_temp = mean(temp, na.rm = TRUE),
     .groups = "drop"
   )
+
+# =========================================================
+# Build Event Window Data
+# =========================================================
+# Extract the selected 36-hour event window for the multi-panel
+# figure that highlights short-term co-variation among variables.
+
+start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
+end_time <- ymd_hms("2025-07-23 12:00:00", tz = "UTC")
+
+event_data <- df_all %>%
+  filter(timestamp >= start_time, timestamp <= end_time)
+
+# =========================================================
+# Helper Functions
+# =========================================================
+# Define reusable helpers for descriptive-statistics rows and
+# consistent figure export across the capstone project.
+
+make_descriptive_row <- function(data, variable, label) {
+  x <- data[[variable]]
+  
+  tibble(
+    Variable = label,
+    N = sum(!is.na(x)),
+    Mean = mean(x, na.rm = TRUE),
+    SD = sd(x, na.rm = TRUE),
+    Q1 = quantile(x, 0.25, na.rm = TRUE),
+    Median = median(x, na.rm = TRUE),
+    Q3 = quantile(x, 0.75, na.rm = TRUE),
+    Min = min(x, na.rm = TRUE),
+    Max = max(x, na.rm = TRUE)
+  )
+}
+
+save_plot <- function(plot_object, file_name, width = 7, height = 5, dpi = 300) {
+  ggsave(
+    filename = file.path(output_dir, file_name),
+    plot = plot_object,
+    width = width,
+    height = height,
+    dpi = dpi
+  )
+}
+
+# =========================================================
+# Helper Plot Theme
+# =========================================================
+# Define a common plotting theme so all figures share a
+# consistent visual style and manuscript-ready appearance.
+
+theme_capstone <- theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey40"),
+    plot.caption = element_text(color = "grey50", size = 8),
+    legend.position = "bottom"
+  )
 ```
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: tbl-observations
-
-n_obs_last_5_years   <- nrow(last_5_years_pre)
-n_na_temp_change     <- na_temp
-temp_change_range    <- range(last_5_years$temp_change, na.rm = TRUE)
-n_obs_after_na_drop  <- nrow(last_5_years)
-n_days_daily_high    <- nrow(daily_high)
+# =========================================================
+# Observation Tables
+# =========================================================
 
 processing_stats <- tibble(
   Statistic = c(
-    "Number of observations after filtering to last 5 years",
-    "Number of NA temp_change values (before removal)",
-    "Minimum 5-minute temp_change (°C)",
-    "Maximum 5-minute temp_change (°C)",
-    "Number of observations after removing NA temp_change",
-    "Number of days with daily high temperature"
+    "Total 5-minute observations in full dataset",
+    "Non-missing temperature values in full dataset",
+    "Non-missing 5-minute temperature changes in full dataset",
+    "Minimum 5-minute temperature change in full dataset (°C)",
+    "Maximum 5-minute temperature change in full dataset (°C)",
+    "Days with daily high temperature values in full dataset"
   ),
   Value = c(
-    n_obs_last_5_years,
-    n_na_temp_change,
-    temp_change_range[1],
-    temp_change_range[2],
-    n_obs_after_na_drop,
-    n_days_daily_high
+    nrow(df_all),
+    sum(!is.na(df_all$temp)),
+    nrow(df_5min_change_all),
+    min(df_5min_change_all$temp_change_5min, na.rm = TRUE),
+    max(df_5min_change_all$temp_change_5min, na.rm = TRUE),
+    nrow(daily_high)
   )
 )
 
 knitr::kable(
   processing_stats,
-  caption = "Observation counts and temperature-change diagnostics for the last 5 years."
+  caption = "Observation counts and temperature-change diagnostics for the full KLAX record, 2000-2026",
+  digits = 2
 )
 ```
 
@@ -217,145 +375,172 @@ This subset preserves both the high temporal resolution of the original ASOS dat
 #### Descriptive Statistics
 
 ```{r, warning=FALSE, message=FALSE}
-#| label: tbl-descriptive_stats
+#| label: tbl-descriptive-stats
+# =========================================================
+# Descriptive Statistics Table
+# =========================================================
 
-continuous_summary <- tibble(
-  Variable = c(
-    "Wind speed (kt)",
-    "Wind gust (kt)",
-    "Visibility (statute mi)",
-    "Air temperature (°C)",
-    "Dewpoint temperature (°C)",
-    "Relative humidity (%)",
-    "Altimeter (inHg)"
-  ),
-  N      = c(
-    sum(!is.na(last_5_years$wind_speed_kt)),
-    sum(!is.na(last_5_years$wind_gust_kt)),
-    sum(!is.na(last_5_years$visibility_sm)),
-    sum(!is.na(last_5_years$temp_c)),
-    sum(!is.na(last_5_years$dewpoint_c)),
-    sum(!is.na(last_5_years$rh_pct)),
-    sum(!is.na(last_5_years$altimeter_inhg))
-  ),
-  Mean   = c(
-    mean(last_5_years$wind_speed_kt,   na.rm = TRUE),
-    mean(last_5_years$wind_gust_kt,    na.rm = TRUE),
-    mean(last_5_years$visibility_sm,   na.rm = TRUE),
-    mean(last_5_years$temp_c,          na.rm = TRUE),
-    mean(last_5_years$dewpoint_c,      na.rm = TRUE),
-    mean(last_5_years$rh_pct,          na.rm = TRUE),
-    mean(last_5_years$altimeter_inhg,  na.rm = TRUE)
-  ),
-  SD     = c(
-    sd(last_5_years$wind_speed_kt,     na.rm = TRUE),
-    sd(last_5_years$wind_gust_kt,      na.rm = TRUE),
-    sd(last_5_years$visibility_sm,     na.rm = TRUE),
-    sd(last_5_years$temp_c,            na.rm = TRUE),
-    sd(last_5_years$dewpoint_c,        na.rm = TRUE),
-    sd(last_5_years$rh_pct,            na.rm = TRUE),
-    sd(last_5_years$altimeter_inhg,    na.rm = TRUE)
-  ),
- Q1     = c(
-    quantile(last_5_years$wind_speed_kt,   0.25, na.rm = TRUE),
-    quantile(last_5_years$wind_gust_kt,    0.25, na.rm = TRUE),
-    quantile(last_5_years$visibility_sm,   0.25, na.rm = TRUE),
-    quantile(last_5_years$temp_c,          0.25, na.rm = TRUE),
-    quantile(last_5_years$dewpoint_c,      0.25, na.rm = TRUE),
-    quantile(last_5_years$rh_pct,          0.25, na.rm = TRUE),
-    quantile(last_5_years$altimeter_inhg,  0.25, na.rm = TRUE)
-  ),
-  Median = c(
-    median(last_5_years$wind_speed_kt,    na.rm = TRUE),
-    median(last_5_years$wind_gust_kt,     na.rm = TRUE),
-    median(last_5_years$visibility_sm,    na.rm = TRUE),
-    median(last_5_years$temp_c,           na.rm = TRUE),
-    median(last_5_years$dewpoint_c,       na.rm = TRUE),
-    median(last_5_years$rh_pct,           na.rm = TRUE),
-    median(last_5_years$altimeter_inhg,   na.rm = TRUE)
-  ),
-  Q3     = c(
-    quantile(last_5_years$wind_speed_kt,   0.75, na.rm = TRUE),
-    quantile(last_5_years$wind_gust_kt,    0.75, na.rm = TRUE),
-    quantile(last_5_years$visibility_sm,   0.75, na.rm = TRUE),
-    quantile(last_5_years$temp_c,          0.75, na.rm = TRUE),
-    quantile(last_5_years$dewpoint_c,      0.75, na.rm = TRUE),
-    quantile(last_5_years$rh_pct,          0.75, na.rm = TRUE),
-    quantile(last_5_years$altimeter_inhg,  0.75, na.rm = TRUE)
-  ),
-  Min    = c(
-    min(last_5_years$wind_speed_kt,    na.rm = TRUE),
-    min(last_5_years$wind_gust_kt,     na.rm = TRUE),
-    min(last_5_years$visibility_sm,    na.rm = TRUE),
-    min(last_5_years$temp_c,          na.rm = TRUE),
-    min(last_5_years$dewpoint_c,      na.rm = TRUE),
-    min(last_5_years$rh_pct,          na.rm = TRUE),
-    min(last_5_years$altimeter_inhg,  na.rm = TRUE)
-  ),
-  Max    = c(
-    max(last_5_years$wind_speed_kt,    na.rm = TRUE),
-    max(last_5_years$wind_gust_kt,     na.rm = TRUE),
-    max(last_5_years$visibility_sm,    na.rm = TRUE),
-    max(last_5_years$temp_c,           na.rm = TRUE),
-    max(last_5_years$dewpoint_c,       na.rm = TRUE),
-    max(last_5_years$rh_pct,           na.rm = TRUE),
-    max(last_5_years$altimeter_inhg,   na.rm = TRUE)
-  )
+continuous_summary <- bind_rows(
+  make_descriptive_row(df_full, "wind_speed_kt", "Wind speed (kt)"),
+  make_descriptive_row(df_full, "wind_gust_kt", "Wind gust (kt)"),
+  make_descriptive_row(df_full, "visibility_sm", "Visibility (statute mi)"),
+  make_descriptive_row(df_full, "temp", "Air temperature (°C)"),
+  make_descriptive_row(df_full, "dewpoint_c", "Dewpoint temperature (°C)"),
+  make_descriptive_row(df_full, "rh_pct", "Relative humidity (%)"),
+  make_descriptive_row(df_full, "altimeter_inhg", "Altimeter (inHg)")
 )
 
 knitr::kable(
   continuous_summary,
-  caption = "Descriptive statistics for KLAX 5-minute meteorological variables over the last five years.",
+  caption = "Descriptive statistics for KLAX 5-minute meteorological variables over the full 2000–2026 record.",
   digits = 2
 )
 ```
 
-The descriptive statistics of the selected continuous variables in @tbl-descriptive_stats indicate that most predictors are well-behaved but not strictly Gaussian, with moderate skewness, truncation, and differing scales across variables, which supports the use of a flexible, nonparametric model such as XGBoost. 
+The descriptive statistics of the selected continuous variables in @tbl-descriptive-stats indicate that most predictors are well-behaved but not strictly Gaussian, with moderate skewness, truncation, and differing scales across variables, which supports the use of a flexible, nonparametric model such as XGBoost. 
 Wind speed and gusts show right-tailed behavior with occasional stronger events, while relative humidity exhibits a broader spread and occasional very dry conditions. 
 Visibility is heavily concentrated at its upper bound (10 statute miles), creating a pronounced ceiling effect, and altimeter readings are tightly clustered with minimal variance. 
 In combination, these features form a predictor set with mixed distributional shapes, bounded ranges, and differing levels of measurement frequency, such as the smaller number of observations for gusts, making tree-based gradient boosting particularly suitable because it does not rely on linearity or normality assumptions and handles non-linear interactions and threshold effects naturally.
 
 From a preprocessing standpoint, the ranges and standard deviations suggest that standard feature scaling or normalization can be used to stabilize training without requiring aggressive transformations of each variable, further aligning with standard XGBoost workflows. Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability and are likely to provide strong predictive signal. XGBoost can also accommodate the reduced sample size for wind gusts, by learning optimal directions for missing values in the tree structure rather than requiring imputation strategies. Taken together, these descriptive statistics justify the choice of XGBoost as an appropriate modeling framework for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.
 
+```{r, warning=FALSE, message=FALSE}
+#| label: tbl-temp-by-wind-group
+# =========================================================
+# Temperatures by Wind Groups Table
+# =========================================================
+# Summarize air temperature by east-wind and west-wind groups
+# across the full record to match the wind-regime histogram section.
+
+temp_by_wind_summary <- df_all %>%
+  filter(!is.na(wind_group), !is.na(temp)) %>%
+  group_by(wind_group) %>%
+  summarise(
+    N = sum(!is.na(temp)),
+    Mean = mean(temp, na.rm = TRUE),
+    SD = sd(temp, na.rm = TRUE),
+    Q1 = quantile(temp, 0.25, na.rm = TRUE),
+    Median = median(temp, na.rm = TRUE),
+    Q3 = quantile(temp, 0.75, na.rm = TRUE),
+    Min = min(temp, na.rm = TRUE),
+    Max = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+knitr::kable(
+  temp_by_wind_summary,
+  caption = "Descriptive statistics for air temperature grouped by east-wind and west-wind observations across the full KLAX dataset.",
+  digits = 2
+)
+```
+
+```{r, warning=FALSE, message=FALSE}
+#| label: tbl-temp-summary
+# =========================================================
+# Temperature Summary Statistics
+# =========================================================
+# Summarize the magnitude of full-record 5-minute temperature
+# changes and identify the 99th-percentile abnormal threshold.
+
+abs_q <- quantile(
+  df_5min_change_all$abs_temp_change_5min,
+  probs = c(0.5, 0.75, 0.9, 0.95, 0.99, 1.0),
+  na.rm = TRUE
+)
+
+abnormal_threshold <- abs_q["99%"]
+
+df_5min_change_all <- df_5min_change_all %>%
+  mutate(abnormal_change = abs_temp_change_5min > abnormal_threshold)
+
+summary_stats <- tibble(
+  Statistic = c(
+    "Total observations",
+    "Mean absolute 5-minute change (°C)",
+    "Median absolute 5-minute change (°C)",
+    "75th percentile (°C)",
+    "90th percentile (°C)",
+    "95th percentile (°C)",
+    "99th percentile (°C) [abnormal threshold]",
+    "Maximum absolute 5-minute change (°C)",
+    "Number of abnormal changes",
+    "Percentage of abnormal changes (%)"
+  ),
+  Value_raw = c(
+    nrow(df_5min_change_all),
+    mean(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    median(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    abs_q["75%"],
+    abs_q["90%"],
+    abs_q["95%"],
+    abs_q["99%"],
+    max(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    sum(df_5min_change_all$abnormal_change, na.rm = TRUE),
+    100 * mean(df_5min_change_all$abnormal_change, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    Value = case_when(
+      Statistic %in% c("Total observations", "Number of abnormal changes") ~ comma(Value_raw, accuracy = 1),
+      Statistic == "Percentage of abnormal changes (%)" ~ number(Value_raw, accuracy = 0.01),
+      TRUE ~ number(Value_raw, accuracy = 0.01)
+    )
+  )
+
+
+knitr::kable(
+  summary_stats %>% select(Statistic, Value),
+  caption = "Summary statistics for full-record 5-minute temperature changes at KLAX."
+)
+```
+
 #### Initial Findings and Insights
 
 Exploratory analysis of the filtered KLAX dataset reveals a clear and persistent annual cycle in daily high temperature. 
 The time series of daily high temperatures over the last five years in @fig-daily-high-ts shows regular seasonal oscillation, with warmer peaks in late summer and cooler conditions in winter, while still exhibiting day-to-day fluctuations and occasional extreme warm events.
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-ts
-#| fig-cap: "Daily high temperature at KLAX over the last five years."
+#| fig-cap: "Daily high temperature at KLAX over the recent 5-year analysis window."
+# =========================================================
+# Daily High Time Series Plot
+# =========================================================
+# Plot the recent 5-year daily high temperature time series.
+
 
 p_daily_high <- ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
-  geom_line(color = "darkorange", alpha = 0.8) +
+  geom_line(color = "darkorange", alpha = 0.8, linewidth = 0.4) +
   labs(
-    title = "Daily High Temperature at KLAX (Last 5 Years)",
+    title = "Daily High Temperature at KLAX (Full Record)",
     x = "Date",
     y = "Daily High Temperature (°C)"
   ) +
-  theme_minimal() +
-  scale_x_date(date_breaks = "6 months", date_labels = "%b %Y")
+  scale_x_date(
+    date_breaks = "2 years",
+    date_labels = "%Y",
+    expand = c(0.01, 0.01)
+  ) +
+  theme_capstone +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
 
 p_daily_high
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_daily_high_temp_ts.png"),
-  plot = p_daily_high,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_daily_high, "fig_daily_high_temp_ts.png")
 ```
 
 This seasonal structure is reinforced by the monthly boxplots in @fig-monthly-boxplot, which show median daily highs increasing gradually from winter through late summer and declining again through autumn, with August and September containing the highest medians and some of the warmest outlying days in the sample.
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-monthly-boxplot
-#| fig-cap: "Monthly distribution of daily high temperature at KLAX over the last five years. Median temperatures rise from winter to late summer and decline through autumn."
+#| fig-cap: "Monthly distribution of daily high temperature at KLAX over the recent 5-year analysis window."
+# =========================================================
+# Monthly Distribution Boxplot
+# =========================================================
+# Plot the monthly distribution of daily high temperatures.
 
-daily_high_months <- daily_high %>%
-  mutate(month = month(date, label = TRUE, abbr = TRUE))
 
 p_boxplot <- ggplot(daily_high_months, aes(x = month, y = daily_high_temp, fill = month)) +
   geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
@@ -364,62 +549,36 @@ p_boxplot <- ggplot(daily_high_months, aes(x = month, y = daily_high_temp, fill 
     x = "Month",
     y = "Daily High Temperature (°C)"
   ) +
+  scale_fill_brewer(palette = "Set2") +
   theme_minimal() +
-  scale_fill_brewer(palette = "Set2")
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey40"),
+    plot.caption = element_text(color = "grey50", size = 8)
+  )
 
 p_boxplot
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_boxplot.png"),
-  plot = p_boxplot,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_boxplot, "fig_boxplot.png")
 ```
 
 @fig-daily-high-ranges below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-ranges
-#| fig-cap: "Daily high temperature at KLAX over the annual cycle, showing daily min, max, mean, and interquartile range values over the last five years. Mean highs increase from winter into late summer, peak in early September, and then decline through autumn."
+#| fig-cap: "Daily high temperature at KLAX by day of year over the recent 5-year analysis window, showing mean, minimum, maximum, and interquartile range values."
+# =========================================================
+# Daily High Ranges
+# =========================================================
+# Plot the day-of-year annual cycle using mean, minimum,
+# maximum, and interquartile-range summaries.
 
-# Add year and day-of-year
-daily_high_doy <- daily_high %>%
-  mutate(
-    year = year(date),
-    doy  = yday(date)
-  ) %>%
-  filter(doy <= 365)
-
-# Compute daily statistics across the last 5 years
-doy_stats <- daily_high_doy %>%
-  group_by(doy) %>%
-  summarise(
-    mean_high = mean(daily_high_temp, na.rm = TRUE),
-    q1_high   = quantile(daily_high_temp, 0.25, na.rm = TRUE),
-    q3_high   = quantile(daily_high_temp, 0.75, na.rm = TRUE),
-    min_high  = min(daily_high_temp, na.rm = TRUE),
-    max_high  = max(daily_high_temp, na.rm = TRUE),
-    .groups   = "drop"
-  )
-
-# Approximate month positions for labeling
-month_starts <- tibble(
-  doy = c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335),
-  month = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-)
 
 p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
-  # Interquartile range ribbon
   geom_ribbon(
     aes(ymin = q1_high, ymax = q3_high),
     fill = "skyblue3",
     alpha = 0.35
   ) +
-  # Min/max envelope lines 
   geom_line(
     aes(y = min_high, color = "Min"),
     linewidth = 0.4,
@@ -430,72 +589,53 @@ p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
     linewidth = 0.4,
     linetype = "dashed"
   ) +
-  # Mean daily high line 
   geom_line(
     aes(y = mean_high, color = "Mean"),
     linewidth = 0.9
   ) +
   scale_color_manual(
-    name = "Statistic: ",
-    values = c(
-      "Min"  = "gray50",
-      "Max"  = "gray50",
-      "Mean" = "firebrick3"
-    )
+    name = "Statistic",
+    values = c("Min" = "gray50", "Max" = "gray50", "Mean" = "firebrick3")
   ) +
   scale_x_continuous(
-    breaks = month_starts$doy,
-    labels = month_starts$month,
+    breaks = day_of_year_month_starts$doy,
+    labels = day_of_year_month_starts$month,
     expand = c(0.01, 0.01)
   ) +
   labs(
     title = "Daily High Temperature at KLAX by Day of Year",
     x = "Month",
-    y = "Daily high temperature (°C)"
+    y = "Daily High Temperature (°C)"
   ) +
-  theme_minimal() +
-  theme(
-    panel.grid.minor  = element_blank(),
-    legend.position   = "bottom"
-  )
+  theme_capstone +
+  theme(panel.grid.minor = element_blank())
 
 p_daily_high_ranges
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_daily_high_ranges.png"),
-  plot = p_daily_high_ranges,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_daily_high_ranges, "fig_daily_high_ranges.png")
 ```
 
 The overall distribution of daily high temperatures in @fig-daily-high-hist appears to be normally distributed and concentrated within a moderate range, with most days falling between approximately 16 °C and 24 °C and relatively few very cool or very hot days. 
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-hist
-#| fig-cap: "Histogram of daily high temperatures at KLAX over the last five years. Most daily highs fall within a moderate range, while very hot and very cool days occur less frequently."
+#| fig-cap: "Histogram of daily high temperatures at KLAX over the recent 5-year analysis window."
+# =========================================================
+# Daily High Histogram
+# =========================================================
+# Plot the frequency distribution of daily high temperatures.
+
 
 p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
   geom_histogram(binwidth = 1, fill = "forestgreen", color = "white", alpha = 0.8) +
   labs(
-    title = "Histogram of Daily High Temperature at KLAX (Last 5 Years)",
+    title = "Histogram of Daily High Temperature at KLAX (Recent 5 Years)",
     x = "Daily High Temperature (°C)",
     y = "Frequency"
   ) +
-  theme_minimal()
+  theme_capstone
 
 p_hist_daily
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_hist_daily_high_temps.png"),
-  plot = p_hist_daily,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_hist_daily, "fig_hist_daily_high_temps.png")
 ```
 
 Together, @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-daily-high-hist show that the dataset contains strong seasonal signal without being dominated by erratic or implausible daily values, making it suitable for subsequent machine learning analysis.
@@ -503,274 +643,161 @@ Together, @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-daily-high-hist sho
 At shorter timescales, the five-minute observations exhibit strong persistence. 
 The histogram of all 5-minute temperature changes in @fig-temp-change-all shows an overwhelming concentration at 0 °C, and the non-zero histogram in @fig-temp-change-nonzero confirms that even when change occurs, most changes are small in magnitude and cluster tightly around zero. 
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-temp-change-all
-#| fig-cap: "Histogram of all 5-minute temperature changes at KLAX over the last five years. The distribution is strongly concentrated at 0 °C, indicating that most short-term intervals show no measurable temperature change."
+#| fig-cap: "Histogram of all 5-minute temperature changes at KLAX across the full observation record."
+# =========================================================
+# 5 Minute Temp Change All Plot
+# =========================================================
+# Plot the full-record histogram of all 5-minute temperature changes.
 
-p_hist_change <- ggplot(last_5_years, aes(x = temp_change)) +
+
+p_hist_change <- ggplot(df_5min_change_all, aes(x = temp_change_5min)) +
   geom_histogram(
     binwidth = 0.1,
     fill = "steelblue",
     color = "white",
     alpha = 0.8
   ) +
-  scale_x_continuous(breaks = seq(-2, 2, by = 0.5)) +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
+  coord_cartesian(xlim = c(-3, 3)) +
   labs(
     title = "Histogram of 5-Minute Temperature Changes at KLAX",
-    subtitle = "Most 5-minute changes are exactly 0°C; extreme changes are rare outliers",
+    subtitle = "Most 5-minute changes are exactly 0°C; larger changes are comparatively rare",
     x = "5-Minute Temperature Change (°C)",
     y = "Frequency"
   ) +
-  theme_minimal() +
-  xlim(-3, 3)
+  theme_capstone
 
 p_hist_change
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_5min_temp_change_hist.png"),
-  plot = p_hist_change,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_hist_change, "fig_5min_temp_change_hist.png")
 ```
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-temp-change-nonzero
-#| fig-cap: "Histogram of non-zero 5-minute temperature changes at KLAX over the last five years. Most non-zero changes remain small in magnitude, with only a small number of larger positive or negative jumps."
+#| fig-cap: "Histogram of non-zero 5-minute temperature changes at KLAX across the full observation record."
+# =========================================================
+# 5 Minute Temp Change Excluding Zeros Plot
+# =========================================================
+# Plot the full-record histogram of non-zero 5-minute changes.
 
-# Proportion of zero changes and histogram of non-zero changes
-zero_changes <- last_5_years %>%
-  filter(temp_change == 0)
 
-nonzero_changes <- last_5_years %>%
-  filter(temp_change != 0)
-
-prop_zero <- nrow(zero_changes) / nrow(last_5_years)
-
-# cat("Proportion of 5-minute intervals with exactly 0°C change:", prop_zero, "\n")
-# cat("Percentage:", 100 * prop_zero, "%\n")
-
-p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change)) +
+p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change_5min)) +
   geom_histogram(
-    binwidth = 0.2,
+    binwidth = 0.1,
     fill = "darkorange",
     color = "white",
     alpha = 0.8
   ) +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
+  coord_cartesian(xlim = c(-3, 3)) +
   labs(
     title = "Histogram of Non-Zero 5-Minute Temperature Changes at KLAX",
-    subtitle = sprintf("Proportion of zero changes: %.1f%%", 100 * prop_zero),
+    subtitle = sprintf("Proportion of exact zero changes: %.1f%%", 100 * prop_zero),
     x = "5-Minute Temperature Change (°C)",
     y = "Frequency"
   ) +
-  theme_minimal() +
-  xlim(-5, 5)
+  theme_capstone
 
 p_non_zero_hist
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_5min_nonzero_change_hist.png"),
-  plot = p_non_zero_hist,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_non_zero_hist, "fig_5min_nonzero_change_hist.png")
 ```
 
 This pattern is consistent with the summary statistics in @tbl-temp-summary: approximately 70.76% of five-minute intervals show exactly 0 °C change, the mean absolute five-minute change is 0.17 °C, the median absolute change is 0 °C, and the 75th percentile is only 0.5 °C, indicating that short-term temperature changes at KLAX are typically gradual rather than abrupt.
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-3h-temp-change
-#| fig-cap: "Distribution of 3-hour temperature changes from 5-minute observations, 2000-2026"
+#| fig-cap: "Distribution of 3-hour temperature changes from KLAX 5-minute observations across the full record, 2000-2026."
+# =========================================================
+# 3-hour Temp Changes Histogram
+# =========================================================
+# Plot the full-record distribution of 3-hour temperature changes.
 
-d3 <- df_KLAX
 
-d3 <- d3 %>%
-  mutate(t3 = lag(datetime_utc, 36),
-         temp_lag = lag(temp_c, 36),
-         delta = temp_c - temp_lag) %>%
-  filter(as.numeric(datetime_utc - t3, units = "mins") == 180, !is.na(delta))
-
-h3_temp_change <- ggplot(d3, aes(delta)) +
+p_3h_temp_change <- ggplot(df_3h_change_all, aes(x = temp_change_3h)) +
   geom_histogram(binwidth = 1, boundary = 0, fill = "steelblue", colour = "white") +
   scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
   coord_cartesian(xlim = c(-10, 10)) +
   scale_y_continuous(labels = scales::comma) +
   labs(
-    title = "Histogram of 3-hour Temperature Changes at LAX",
-    subtitle = "Distribution of 3-hour temperature changes from 5-minute observations, 2000-2026",
-    x = "Temperature change over 3 hours (°C)",
-    y = "Number of 3-hour periods",
+    title = "Histogram of 3-Hour Temperature Changes at KLAX",
+    subtitle = "Distribution of 3-hour temperature changes from KLAX 5-minute observations, 2000-2026.",
+    x = "Temperature Change over 3 Hours (°C)",
+    y = "Number of 3-Hour Periods",
     caption = "Source: NOAA ASOS 5-minute data, KLAX station"
   ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(size = 10, colour = "grey40"),
-    plot.caption = element_text(size = 8, colour = "grey50")
-  )
+  theme_capstone
 
-h3_temp_change
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_3h_temp_change.png"),
-  plot = h3_temp_change,
-  width = 7, height = 5, dpi = 300
-)
+p_3h_temp_change
+save_plot(p_3h_temp_change, "fig_3h_temp_change.png")
 ```
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-3h-wind-change
-#| fig-cap: "3-hour temperature change following gust observations, 2000-2026"
+#| fig-cap: "3-hour temperature change following gust observations at KLAX, grouped by easterly and westerly wind regimes across the full record, 2000-2026."
+# =========================================================
+# 3-hour Wind Gust Temp Changes Histogram
+# =========================================================
+# Plot 3-hour temperature change after gust observations,
+# grouped by easterly and westerly wind regimes.
 
-g <- df_KLAX
 
-g <- g %>%
-  mutate(temp_future = lead(temp_c, 36),
-         t_future = lead(datetime_utc, 36),
-         dT = temp_future - temp_c,
-         wd = as.numeric(wind_dir)) %>%
-  filter(!is.na(wind_gust_kt), wind_gust_kt < 100,
-         !is.na(wd), !is.na(dT),
-         as.numeric(t_future - datetime_utc, units = "mins") == 180,
-         abs(dT) <= 10) %>%
-  mutate(group = case_when(
-    wd >= 210 & wd <= 330 ~ "Westerly gusts (west to east)",
-    wd >= 30  & wd <= 150 ~ "Easterly gusts (east to west)",
-    TRUE ~ NA_character_)) %>%
-  filter(!is.na(group))
-
-h3_wind_change <- ggplot(g, aes(dT, fill = group)) +
-  geom_histogram(binwidth = 1, boundary = 0, position = "identity",
-                 alpha = 0.6, colour = "white") +
+p_3h_wind_change <- ggplot(df_3h_gust_change, aes(x = temp_change_next_3h, fill = gust_wind_group)) +
+  geom_histogram(
+    binwidth = 1,
+    boundary = 0,
+    position = "identity",
+    alpha = 0.6,
+    colour = "white"
+  ) +
   scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
   coord_cartesian(xlim = c(-10, 10)) +
   scale_y_continuous(labels = scales::comma) +
-  scale_fill_manual(values = c("Westerly gusts (west to east)" = "lightblue",
-                               "Easterly gusts (east to west)" = "red")) +
-  labs(title = "Temperature Change After Gusts at LAX: Onshore vs Offshore",
-       subtitle = "3-hour temperature change following gust observations, 2000-2026",
-       x = "Temperature change over 3 hours (°C)",
-       y = "Number of gust observations",
-       fill = NULL) +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold", size = 14),
-        plot.subtitle = element_text(size = 10, colour = "grey40"),
-        plot.caption = element_text(size = 8, colour = "grey50"),
-        legend.position = "top")
-
-h3_wind_change
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_3h_wind_change.png"),
-  plot = h3_wind_change,
-  width = 7, height = 5, dpi = 300
-)
-```
-
-```{r, warning=FALSE, echo=TRUE}
-#| label: tbl-temp-summary
-
-# Summary statistics and abnormal change flags for 5-minute temperature changes
-
-# Absolute temperature changes
-last_5_years <- last_5_years %>%
-  mutate(abs_temp_change = abs(temp_change))
-
-# Quantiles of absolute changes
-abs_q <- quantile(last_5_years$abs_temp_change,
-                  probs = c(0.5, 0.75, 0.9, 0.95, 0.99, 1.0))
-
-# Define abnormal threshold (99th percentile)
-abnormal_threshold <- abs_q["99%"]
-
-# Flag abnormal changes
-last_5_years <- last_5_years %>%
-  mutate(abnormal_change = abs_temp_change > abnormal_threshold)
-
-n_abnormal <- sum(last_5_years$abnormal_change)
-n_total <- nrow(last_5_years)
-pct_abnormal <- 100 * n_abnormal / n_total
-
-# Summary statistics table
-summary_stats <- tibble(
-  Statistic = c(
-    "Total observations",
-    "Mean absolute 5-min change (°C)",
-    "Median absolute 5-min change (°C)",
-    "75th percentile (°C)",
-    "90th percentile (°C)",
-    "95th percentile (°C)",
-    "99th percentile (°C) [abnormal threshold]",
-    "Maximum absolute 5-min change (°C)",
-    "Number of abnormal changes",
-    "Percentage of abnormal changes (%)"
-  ),
-  Value_raw = c(
-    n_total,
-    mean(last_5_years$abs_temp_change, na.rm = TRUE),
-    median(last_5_years$abs_temp_change, na.rm = TRUE),
-    abs_q["75%"],
-    abs_q["90%"],
-    abs_q["95%"],
-    abs_q["99%"],
-    max(last_5_years$abs_temp_change, na.rm = TRUE),
-    n_abnormal,
-    pct_abnormal
-  )
-) %>%
-  mutate(
-    Value = case_when(
-      Statistic %in% c("Total observations", "Number of abnormal changes") ~
-        comma(Value_raw, accuracy = 1),
-      Statistic == "Percentage of abnormal changes (%)" ~
-        number(Value_raw, accuracy = 0.01),
-      TRUE ~ number(Value_raw, accuracy = 0.01)
+  scale_fill_manual(
+    values = c(
+      "Westerly gusts (west to east)" = "lightblue",
+      "Easterly gusts (east to west)" = "red"
     )
-  )
+  ) +
+  labs(
+    title = "Temperature Change After Gusts at KLAX: Onshore vs Offshore",
+    subtitle = "3-hour temperature change following gust observations, 2000-2026",
+    x = "Temperature Change over 3 Hours (°C)",
+    y = "Number of Gust Observations",
+    fill = NULL
+  ) +
+  theme_capstone +
+  theme(legend.position = "top")
 
-knitr::kable(
-  summary_stats %>% select(Statistic, Value),
-  caption = "Summary statistics for 5-minute temperature changes."
-)
+p_3h_wind_change
+save_plot(p_3h_wind_change, "fig_3h_wind_change.png")
 ```
 
 The diurnal cycle plot in @fig-diurnal-cycle provides an additional view of the short-term structure by averaging temperature across each hour of the day during the last two years. That figure shows coolest temperatures during the early morning hours, a steady increase through the morning, and a peak in the early afternoon before gradual evening cooling, which is consistent with expected solar-heating dynamics. This smooth and interpretable daily pattern suggests that time-based predictors such as hour, day, or season are likely to be useful in downstream modeling.
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| label: fig-diurnal-cycle
-#| fig-cap: "Average diurnal temperature cycle at KLAX based on the last two years of 5-minute observations. Temperatures are coolest in the early morning, rise through the morning hours, peak in the early afternoon, and then gradually decline into the evening."
+#| fig-cap: "Average diurnal temperature cycle at KLAX based on the recent 5-year analysis window."
+# =========================================================
+# Diurnal Cycle Plot
+# =========================================================
+# Plot the average diurnal temperature cycle for the recent
+# 5-year analysis window.
+
 
 p_diurnal <- ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
-  geom_line(color = "purple", size = 1.2) +
+  geom_line(color = "purple", linewidth = 1.2) +
   geom_point(color = "purple", size = 2) +
+  scale_x_continuous(breaks = 0:23) +
   labs(
-    title = "Average Diurnal Temperature Curve at KLAX (Last 2 Years)",
+    title = "Average Diurnal Temperature Cycle at KLAX (Recent 5 Years)",
     x = "Hour of Day",
     y = "Average Temperature (°C)"
   ) +
-  theme_minimal() +
-  scale_x_continuous(breaks = 0:23)
+  theme_capstone
 
 p_diurnal
-
-output_dir <- "output"
-if (!dir.exists(output_dir)) dir.create(output_dir)
-
-ggsave(
-  filename = file.path(output_dir, "fig_diurnal_cycle.png"),
-  plot = p_diurnal,
-  width = 7, height = 5, dpi = 300
-)
+save_plot(p_diurnal, "fig_diurnal_cycle.png")
 ```
 
 #### Unexpected Patterns and Anomalies
@@ -787,34 +814,22 @@ Over this interval, temperature increases during the daytime, cools overnight, a
 Relative humidity varies inversely with temperature, wind speed increases during the afternoon with several gusts above 20 kt, visibility remains near 10 statute miles for most of the period, and altimeter pressure changes gradually rather than erratically. 
 This figure shows that the ASOS dataset captures coherent meteorological relationships across variables at fine temporal resolution and supports the use of these predictors in feature engineering for the XGBoost model.
 
-```{r, warning=FALSE, echo=TRUE}
+```{r, warning=FALSE, message=FALSE}
 #| fig-width: 14
 #| fig-height: 20
 #| dpi: 300
 #| label: fig-multivariable-window
-#| fig-cap: "Multi-variable 5-minute meteorological observations at KLAX from July 22 to July 23, 2025. The figure shows short-term co-variation in temperature, dewpoint, relative humidity, wind speed and gusts, visibility, and altimeter pressure over a 36-hour period."
-
-
-# Select 36 hour time frame
-start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
-end_time   <- ymd_hms("2025-07-23 12:00:00", tz = "UTC")
-
-event_data <- last_5_years %>%
-  filter(timestamp >= start_time, timestamp <= end_time) %>%
-  mutate(
-    temp_c = as.numeric(temp_c),
-    dewpoint_c = as.numeric(dewpoint_c),
-    rh_pct = as.numeric(rh_pct),
-    wind_speed_kt = as.numeric(wind_speed_kt),
-    wind_gust_kt = as.numeric(wind_gust_kt),
-    visibility_sm = as.numeric(visibility_sm),
-    altimeter_inhg = as.numeric(altimeter_inhg)
-  )
+#| fig-cap: "Multi-variable 5-minute meteorological observations at KLAX from July 22 to July 23, 2025."
+# =========================================================
+# Multivariable Window
+# =========================================================
+# Plot a five-panel event-window figure showing the short-term
+# co-variation of temperature, moisture, wind, visibility, and pressure.
 
 plot_title <- paste0(
-  "KLAX 5-minute observations  ",
+  "KLAX 5-minute observations ",
   format(min(event_data$timestamp), "%H:%M %m/%d/%Y"),
-  "  to  ",
+  " to ",
   format(max(event_data$timestamp), "%H:%M %m/%d/%Y"),
   " (UTC)"
 )
@@ -835,28 +850,21 @@ common_theme <- theme_minimal() +
     axis.title.x = element_blank()
   )
 
-# Panel 1: Temperature and dewpoint
 p1 <- ggplot(event_data, aes(x = timestamp)) +
-  geom_line(aes(y = temp_c, color = "Temperature"), linewidth = 0.5, na.rm = TRUE) +
+  geom_line(aes(y = temp, color = "Temperature"), linewidth = 0.5, na.rm = TRUE) +
   geom_line(aes(y = dewpoint_c, color = "Dewpoint"), linewidth = 0.5, na.rm = TRUE) +
-  labs(title = "Temperature (deg C)", y = NULL) +
-  scale_color_manual(
-    values = c("Temperature" = "firebrick", "Dewpoint" = "darkolivegreen4")
-  ) +
+  labs(title = "Temperature (°C)", y = NULL) +
+  scale_color_manual(values = c("Temperature" = "firebrick", "Dewpoint" = "darkolivegreen4")) +
   common_x_scale +
   common_theme
 
-# Panel 2: Relative humidity
 p2 <- ggplot(event_data, aes(x = timestamp)) +
   geom_line(aes(y = rh_pct, color = "RH"), linewidth = 0.5, na.rm = TRUE) +
   labs(title = "Relative humidity (%)", y = NULL) +
-  scale_color_manual(
-    values = c("RH" = "steelblue4")
-  ) +
+  scale_color_manual(values = c("RH" = "steelblue4")) +
   common_x_scale +
   common_theme
 
-# Panel 3: Wind speed and gusts
 p3 <- ggplot(event_data, aes(x = timestamp)) +
   geom_line(aes(y = wind_speed_kt, color = "Wind speed"), linewidth = 0.4, na.rm = TRUE) +
   geom_point(
@@ -867,41 +875,31 @@ p3 <- ggplot(event_data, aes(x = timestamp)) +
     na.rm = TRUE
   ) +
   labs(title = "Wind (kt)", y = NULL) +
-  scale_color_manual(
-    values = c("Wind speed" = "grey35", "Gust" = "darkorange")
-  ) +
+  scale_color_manual(values = c("Wind speed" = "grey35", "Gust" = "darkorange")) +
   common_x_scale +
   common_theme
 
-# Panel 4: Visibility
 p4 <- ggplot(event_data, aes(x = timestamp)) +
   geom_line(aes(y = visibility_sm, color = "Visibility"), linewidth = 0.5, na.rm = TRUE) +
   labs(title = "Visibility (sm)", y = NULL) +
-  scale_color_manual(
-    values = c("Visibility" = "mediumpurple4")
-  ) +
+  scale_color_manual(values = c("Visibility" = "mediumpurple4")) +
   common_x_scale +
   common_theme
 
-# Panel 5: Altimeter
 p5 <- ggplot(event_data, aes(x = timestamp)) +
   geom_line(aes(y = altimeter_inhg, color = "Altimeter"), linewidth = 0.4, na.rm = TRUE) +
   labs(title = "Altimeter (inHg)", x = "Time (UTC)", y = NULL) +
-  scale_color_manual(
-    values = c("Altimeter" = "saddlebrown")
-  ) +
+  scale_color_manual(values = c("Altimeter" = "saddlebrown")) +
   common_x_scale +
   common_theme +
   theme(axis.title.x = element_text())
 
-# Combine panels with shared legend at bottom
+
 multi_plot <- (p1 / p2 / p3 / p4 / p5) +
   plot_layout(guides = "collect") +
   plot_annotation(
     title = plot_title,
-    theme = theme(
-      plot.title = element_text(size = 16, hjust = 0.5)
-    )
+    theme = theme(plot.title = element_text(size = 16, hjust = 0.5))
   ) &
   theme(
     legend.position = "bottom",
@@ -909,21 +907,14 @@ multi_plot <- (p1 / p2 / p3 / p4 / p5) +
   )
 
 multi_plot
-
-ggsave(
-  filename = file.path(output_dir, "fig_multivariable_recent36h.png"),
-  plot = multi_plot,
-  width = 11,
-  height = 14,
-  dpi = 300
-)
+save_plot(multi_plot, "fig_multivariable_recent36h.png", width = 11, height = 14)
 ```
 
 #### Implications for Modeling
 
 Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. 
 The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. 
-At the same time, the descriptive statistics in @tbl-descriptive_stats suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model. 
+At the same time, the descriptive statistics in @tbl-descriptive-stats suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model. 
 
 These observations directly inform later stages of the project. 
 Seasonal and diurnal patterns visible in @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-diurnal-cycle motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in @fig-multivariable-window suggest that the aggregated features may improve predictive performance. 
