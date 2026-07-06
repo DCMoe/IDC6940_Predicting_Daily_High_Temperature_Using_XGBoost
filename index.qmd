@@ -87,7 +87,7 @@ where $l(\hat{y}_i, y_i)$ is the loss function (squared error in this study), $T
 
 This method suits our data for three reasons. 
 First, it does not require the predictors to share common units or scales; variables such as wind speed and air temperature can interact naturally within the trees. 
-Second, XGBoost includes explicit handling of missing values, so gaps in the observational record (e.g., sensor failures or unmeasured gusts) can be accommodated without discarding entire days or imputing values. 
+Second, XGBoost includes explicit handling of missing values, so gaps in the observational record, i.e., sensor failures or unmeasured gusts, can be accommodated without discarding entire days or imputing values. 
 Third, the fitted model can report which conditions contributed most to its predictions through feature importance and related diagnostics, allowing us to verify that the inferred drivers of high temperatures align with established meteorological cause‑and‑effect relationships.
 
 ## Analysis and Results
@@ -98,7 +98,21 @@ Third, the fitted model can report which conditions contributed most to its pred
 
 The temperature data used in this study were obtained from the National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network [@asos_dataset_noaa]. 
 ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. 
-The dataset used here consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables such as timestamp (`datetime_utc`), wind direction (`wind_dir`), wind speed (`wind_speed_kt`), wind gust (`wind_gust_kt`), visibility (`visibility_sm`), weather and sky condition fields, temperature (`temp_c`), dewpoint (`dewpoint_c`), relative humidity (`rh_pct`), and altimeter pressure (`altimeter_inhg`).
+The dataset used in this study consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables as described in the following table:
+
+| Variable Name      | Variable       | Description                                                                             |
+| ------------------ | -------------- | --------------------------------------------------------------------------------------- |
+| Timestamp          | `datetime_utc` | Date and time of the observation in Coordinated Universal Time (UTC).                   |
+| Wind Direction     | `wind_dir`     | Direction the wind is coming from, usually reported in degrees.                         |
+| Wind Speed         | `wind_speed_kt`| Sustained wind speed in knots.                                                          |
+| Wind Gust          | `wind_gust_kt` | Maximum gust wind speed in knots.                                                       |
+| Visibility         | `visibility_sm`| Horizontal visibility in statute miles. 10sm Max.                                       |
+| Weather            | `weather`      | Reported weather phenomena, such as rain, fog, or thunderstorms.                        |
+| Sky Condition      | `sky_condition`| Description of cloud cover or sky state, such as clear, scattered, broken, or overcast. |
+| Temperature        | `temp_c`       | Air temperature in degrees Celsius.                                                     |
+| Dew Point          | `dewpoint_c`   | Dew point temperature in degrees Celsius.                                               |
+| Relative Humidity  | `rh_pct`       | Relative humidity expressed as a percentage.                                            |
+| Altimeter Pressure | `altimeter_inhg`| Altimeter setting or atmospheric pressure in inches of mercury.                        |
 
 ```{r, warning=FALSE, message=FALSE}
 # =========================================================
@@ -349,33 +363,28 @@ theme_capstone <- theme_minimal() +
 
 processing_stats <- tibble(
   Statistic = c(
-    "Total 5-minute observations in full dataset",
-    "Non-missing temperature values in full dataset",
-    "Non-missing 5-minute temperature changes in full dataset",
-    "Minimum 5-minute temperature change in full dataset (°C)",
-    "Maximum 5-minute temperature change in full dataset (°C)",
-    "Days with daily high temperature values in full dataset"
+    "Total 5-minute observations",
+    "Total non-missing temperature values",
+    "Days with daily high temperature values"
   ),
   Value = c(
     nrow(df_all),
     sum(!is.na(df_all$temp)),
-    nrow(df_5min_change_all),
-    min(df_5min_change_all$temp_change_5min, na.rm = TRUE),
-    max(df_5min_change_all$temp_change_5min, na.rm = TRUE),
     nrow(daily_high)
   )
 )
 
 knitr::kable(
   processing_stats,
-  caption = "Observation counts and temperature-change diagnostics for the full KLAX record, 2000-2026",
+  caption = "Observation counts for KLAX, 2000-2026",
   digits = 2
 )
 ```
 
-For this analysis, the exploratory analysis was restricted to the most recent five years of data beginning from May 1, 2026 in order to maintain a manageable dataset size while emphasizing recent conditions most relevant to the predictive modeling task. 
-After filtering, @tbl-observations shows the resulting subset contains 436,937 5-minute observations, of which 436,292 remain after removing records with missing temperature-change values, along with 1,705 days for which daily high temperature could be computed.
-This subset preserves both the high temporal resolution of the original ASOS data and the seasonal coverage needed to support analysis of daily high temperature variability.
+For this analysis, we begin by finding the number of observations within the dataset.  
+@tbl-observations shows the total number of observations and the total number of non-missing values.
+There are 9,337 values for daily high temperatures. 
+This provides a large amount of data for this analysis and the modeling of daily high temperatures later in this study.
 
 #### Descriptive Statistics
 
@@ -397,17 +406,24 @@ continuous_summary <- bind_rows(
 
 knitr::kable(
   continuous_summary,
-  caption = "Descriptive statistics for KLAX 5-minute meteorological variables over the full 2000–2026 record.",
+  caption = "Descriptive statistics for KLAX 5-minute variables, 2000–2026.",
   digits = 2
 )
 ```
 
-The descriptive statistics of the selected continuous variables in @tbl-descriptive-stats indicate that most predictors are well-behaved but not strictly Gaussian, with moderate skewness, truncation, and differing scales across variables, which supports the use of a flexible, nonparametric model such as XGBoost. 
-Wind speed and gusts show right-tailed behavior with occasional stronger events, while relative humidity exhibits a broader spread and occasional very dry conditions. 
-Visibility is heavily concentrated at its upper bound (10 statute miles), creating a pronounced ceiling effect, and altimeter readings are tightly clustered with minimal variance. 
+The descriptive statistics of the selected continuous variables in @tbl-descriptive-stats indicate that most predictors are well-behaved but do not strictly follow a normal Gaussian distribution, with moderate skewness, truncation, and differing scales across variables.
+This supports the use of a flexible, nonparametric model such as XGBoost. 
+Wind speed and gusts show positive, right-skew with the mean being greater than the median and larger max values further indicating the long right tail.
+Wind gusts also show significantly less observations compared to the other variables.
+On the other hand, relative humidity exhibits a negative, left-skew with occasional very dry conditions. 
+
+Furthermore, visibility is heavily concentrated at its upper bound of 10 statute miles.
+Altimeter readings are tightly clustered around the mean with minimal variance. 
 In combination, these features form a predictor set with mixed distributional shapes, bounded ranges, and differing levels of measurement frequency, such as the smaller number of observations for gusts, making tree-based gradient boosting particularly suitable because it does not rely on linearity or normality assumptions and handles non-linear interactions and threshold effects naturally.
 
-From a preprocessing standpoint, the ranges and standard deviations suggest that standard feature scaling or normalization can be used to stabilize training without requiring aggressive transformations of each variable, further aligning with standard XGBoost workflows. Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability and are likely to provide strong predictive signal. XGBoost can also accommodate the reduced sample size for wind gusts, by learning optimal directions for missing values in the tree structure rather than requiring imputation strategies. Taken together, these descriptive statistics justify the choice of XGBoost as an appropriate modeling framework for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.
+Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability which can provide strong predictive signals. 
+XGBoost can also accommodate the reduced sample size for wind gusts.
+Taken together, these descriptive statistics justify the choice of XGBoost as the selected model for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: tbl-temp-by-wind-group
@@ -432,13 +448,22 @@ temp_by_wind_summary <- df_all %>%
     .groups = "drop"
   )
 
+names(temp_by_wind_summary)[1] <- "Wind Group"
 
 knitr::kable(
   temp_by_wind_summary,
-  caption = "Descriptive statistics for air temperature grouped by east-wind and west-wind observations across the full KLAX dataset.",
+  caption = "Descriptive statistics for air temperature grouped by east-wind and west-wind observations at KLAX, 2000-2026.",
   digits = 2
 )
 ```
+
+@tbl-temp-by-wind-group provides a summary of air temperatures based on whether the wind is blowing from east to west or west to east.
+First, west winds more occur frequently with roughly three times as many observations as east winds.
+West winds also exhibit higher mean and median temperatures when compared to east winds.
+East winds show a much lower minimum temperature, indicating that the east winds are more likely to occur during cooler seasonal periods.
+While this appears counterintuitive to the typical understanding that cool marine west winds provide cooler temperatures, this could be indicative of underlying seasonal weather patterns where east winds might prevail during cooler seasons like the winter months.
+Furthermore, while the average temperatures may be higher while west winds prevail, wind gusts from the west can still provide a stronger and more frequent cooling effect when compared to east gusts.
+This is seen later in this study in @fig-3h-wind-change and supports the idea of an underlying seasonal component for the difference between average temperatures between east and west wind groups.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: tbl-temp-summary
@@ -496,12 +521,15 @@ summary_stats <- tibble(
 
 knitr::kable(
   summary_stats %>% select(Statistic, Value),
-  caption = "Summary statistics for full-record 5-minute temperature changes at KLAX."
+  caption = "Summary statistics for 5-minute temperature changes at KLAX."
 )
 ```
 
+***ADD DISCUSSION***
+
 #### Initial Findings and Insights
 
+***ADD DISCUSSION***
 Exploratory analysis of the filtered KLAX dataset reveals a clear and persistent annual cycle in daily high temperature. 
 The time series of daily high temperatures over the last five years in @fig-daily-high-ts shows regular seasonal oscillation, with warmer peaks in late summer and cooler conditions in winter, while still exhibiting day-to-day fluctuations and occasional extreme warm events.
 
@@ -536,6 +564,7 @@ p_daily_high
 save_plot(p_daily_high, "fig_daily_high_temp_ts.png")
 ```
 
+***ADD DISCUSSION***
 This seasonal structure is reinforced by the monthly boxplots in @fig-monthly-boxplot, which show median daily highs increasing gradually from winter through late summer and declining again through autumn, with August and September containing the highest medians and some of the warmest outlying days in the sample.
 
 ```{r, warning=FALSE, message=FALSE}
@@ -566,7 +595,9 @@ p_boxplot
 save_plot(p_boxplot, "fig_boxplot.png")
 ```
 
-@fig-daily-high-ranges below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.
+***ADD DISCUSSION***
+@fig-daily-high-ranges below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. 
+The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-ranges
@@ -619,6 +650,7 @@ p_daily_high_ranges
 save_plot(p_daily_high_ranges, "fig_daily_high_ranges.png")
 ```
 
+***ADD DISCUSSION***
 The overall distribution of daily high temperatures in @fig-daily-high-hist appears to be normally distributed and concentrated within a moderate range, with most days falling between approximately 16 °C and 24 °C and relatively few very cool or very hot days. 
 
 ```{r, warning=FALSE, message=FALSE}
@@ -643,10 +675,8 @@ p_hist_daily
 save_plot(p_hist_daily, "fig_hist_daily_high_temps.png")
 ```
 
+***ADD DISCUSSION***
 Together, @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-daily-high-hist show that the dataset contains strong seasonal signal without being dominated by erratic or implausible daily values, making it suitable for subsequent machine learning analysis.
-
-At shorter timescales, the five-minute observations exhibit strong persistence. 
-The histogram of all 5-minute temperature changes in @fig-temp-change-all shows an overwhelming concentration at 0 °C, and the non-zero histogram in @fig-temp-change-nonzero confirms that even when change occurs, most changes are small in magnitude and cluster tightly around zero. 
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-temp-change-all
@@ -678,6 +708,10 @@ p_hist_change
 save_plot(p_hist_change, "fig_5min_temp_change_hist.png")
 ```
 
+***ADD DISCUSSION***
+At shorter timescales, the five-minute observations exhibit strong persistence. 
+The histogram of all 5-minute temperature changes in @fig-temp-change-all shows an overwhelming concentration at 0 °C, and the non-zero histogram in @fig-temp-change-nonzero confirms that even when change occurs, most changes are small in magnitude and cluster tightly around zero. 
+
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-temp-change-nonzero
 #| fig-cap: "Histogram of non-zero 5-minute temperature changes at KLAX across the full observation record."
@@ -708,6 +742,7 @@ p_non_zero_hist
 save_plot(p_non_zero_hist, "fig_5min_nonzero_change_hist.png")
 ```
 
+***ADD DISCUSSION***
 This pattern is consistent with the summary statistics in @tbl-temp-summary: approximately 70.76% of five-minute intervals show exactly 0 °C change, the mean absolute five-minute change is 0.17 °C, the median absolute change is 0 °C, and the 75th percentile is only 0.5 °C, indicating that short-term temperature changes at KLAX are typically gradual rather than abrupt.
 
 ```{r, warning=FALSE, message=FALSE}
@@ -736,6 +771,9 @@ p_3h_temp_change <- ggplot(df_3h_change_all, aes(x = temp_change_3h)) +
 p_3h_temp_change
 save_plot(p_3h_temp_change, "fig_3h_temp_change.png")
 ```
+
+***ADD DISCUSSION***
+Given the small changes in temperature during a given 5-minute interval, we expand the interval to a 3-hour range to better observe temperature changes.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-3h-wind-change
@@ -778,7 +816,10 @@ p_3h_wind_change
 save_plot(p_3h_wind_change, "fig_3h_wind_change.png")
 ```
 
-The diurnal cycle plot in @fig-diurnal-cycle provides an additional view of the short-term structure by averaging temperature across each hour of the day during the last two years. That figure shows coolest temperatures during the early morning hours, a steady increase through the morning, and a peak in the early afternoon before gradual evening cooling, which is consistent with expected solar-heating dynamics. This smooth and interpretable daily pattern suggests that time-based predictors such as hour, day, or season are likely to be useful in downstream modeling.
+@fig-3h-wind-change compares the 3-hour temperature changes after gusts from both east and west, or onshore versus offshore gusts.
+As previously discussed, average temperatures tend be higher during periods when west winds are present.
+However, this does not imply that west winds and gusts do not provide a cooling effect.
+As seen in @fig-3h-wind-change, Westerly gusts from offshore provide both a more frequent and stronger cooling effect than easterly gusts from onshore.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-diurnal-cycle
@@ -805,19 +846,20 @@ p_diurnal
 save_plot(p_diurnal, "fig_diurnal_cycle.png")
 ```
 
+***ADD DISCUSSION***
+The diurnal cycle plot in @fig-diurnal-cycle provides an additional view of the short-term structure by averaging temperature across each hour of the day during the last two years. That figure shows coolest temperatures during the early morning hours, a steady increase through the morning, and a peak in the early afternoon before gradual evening cooling, which is consistent with expected solar-heating dynamics. This smooth and interpretable daily pattern suggests that time-based predictors such as hour, day, or season are likely to be useful in downstream modeling.
+
 #### Unexpected Patterns and Anomalies
 
+***ADD DISCUSSION***
 Although most short-term temperature changes are small, the exploratory analysis also reveals a small number of unusually large jumps. 
 Based on the absolute change distribution shown in @fig-temp-change-all and @fig-temp-change-nonzero, the 90th and 95th percentiles are approximately 0.6 °C, while the 99th percentile is 1.1 °C and can be used as a practical threshold for identifying abnormal five-minute changes. Only 4,332 observations, or about 0.99% of the five-minute records, exceed this threshold, indicating that abrupt short-term temperature jumps are rare in the dataset overall.
 
+***ADD DISCUSSION***
 The largest observed absolute five-minute change reaches 22.8 °C, which is physically extreme for such a short interval and likely reflects either a reporting artifact, a timing inconsistency, or another unusual observational circumstance rather than typical atmospheric behavior. 
 Even so, the rarity of these values suggests that they do not dominate the series, but they do warrant attention during preprocessing because they may affect derived features or distort model fitting if left untreated. 
 Furthermore, the presence of long stretches of unchanged temperature and a small number of large jumps indicates that a more practical approach of analysis could be to use a larger timescale.
 
-A more detailed example of short-term multi-variable structure is shown in @fig-multivariable-window, which presents a 36-hour sequence of 5-minute KLAX observations from July 22 to July 23, 2025. 
-Over this interval, temperature increases during the daytime, cools overnight, and rises again the following day, while dewpoint remains comparatively stable, indicating that much of the variation is associated with heating and cooling rather than large shifts in moisture content. 
-Relative humidity varies inversely with temperature, wind speed increases during the afternoon with several gusts above 20 kt, visibility remains near 10 statute miles for most of the period, and altimeter pressure changes gradually rather than erratically. 
-This figure shows that the ASOS dataset captures coherent meteorological relationships across variables at fine temporal resolution and supports the use of these predictors in feature engineering for the XGBoost model.
 
 ```{r, warning=FALSE, message=FALSE}
 #| fig-width: 14
@@ -915,12 +957,20 @@ multi_plot
 save_plot(multi_plot, "fig_multivariable_recent36h.png", width = 11, height = 14)
 ```
 
+***ADD DISCUSSION***
+A more detailed example of short-term multi-variable structure is shown in @fig-multivariable-window, which presents a 36-hour sequence of 5-minute KLAX observations from July 22 to July 23, 2025. 
+Over this interval, temperature increases during the daytime, cools overnight, and rises again the following day, while dewpoint remains comparatively stable, indicating that much of the variation is associated with heating and cooling rather than large shifts in moisture content. 
+Relative humidity varies inversely with temperature, wind speed increases during the afternoon with several gusts above 20 kt, visibility remains near 10 statute miles for most of the period, and altimeter pressure changes gradually rather than erratically. 
+This figure shows that the ASOS dataset captures coherent meteorological relationships across variables at fine temporal resolution and supports the use of these predictors in feature engineering for the XGBoost model.
+
 #### Implications for Modeling
 
+***ADD DISCUSSION***
 Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. 
 The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. ***Add Discussion on time of day*** 
 At the same time, the descriptive statistics in @tbl-descriptive-stats suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model. 
 
+***ADD DISCUSSION***
 These observations directly inform later stages of the project. 
 Seasonal and diurnal patterns visible in @fig-daily-high-ts, @fig-monthly-boxplot, and @fig-diurnal-cycle motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in @fig-multivariable-window suggest that the aggregated features may improve predictive performance. 
 Consequently, the data exploration stage not only describes the structure of the KLAX record but also provides a practical foundation for preprocessing, feature engineering, and model evaluation in the XGBoost framework.

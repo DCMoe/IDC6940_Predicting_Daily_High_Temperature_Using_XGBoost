@@ -2435,7 +2435,7 @@ Important
 <p><span class="math display">\[
 \mathcal{L} = \sum_{i} l(\hat{y}_i, y_i) + \sum_{k=1}^{K} \left[ \gamma T_k + \tfrac{1}{2}\lambda \lVert w_k \rVert^2 \right]. \tag{2}
 \]</span> where <span class="math inline">\(l(\hat{y}_i, y_i)\)</span> is the loss function (squared error in this study), <span class="math inline">\(T_k\)</span> is the number of leaves in tree <span class="math inline">\(k\)</span>, and <span class="math inline">\(w_k\)</span> is the vector of leaf scores for that tree.</p>
-<p>This method suits our data for three reasons. First, it does not require the predictors to share common units or scales; variables such as wind speed and air temperature can interact naturally within the trees. Second, XGBoost includes explicit handling of missing values, so gaps in the observational record (e.g., sensor failures or unmeasured gusts) can be accommodated without discarding entire days or imputing values. Third, the fitted model can report which conditions contributed most to its predictions through feature importance and related diagnostics, allowing us to verify that the inferred drivers of high temperatures align with established meteorological cause‑and‑effect relationships.</p>
+<p>This method suits our data for three reasons. First, it does not require the predictors to share common units or scales; variables such as wind speed and air temperature can interact naturally within the trees. Second, XGBoost includes explicit handling of missing values, so gaps in the observational record, i.e., sensor failures or unmeasured gusts, can be accommodated without discarding entire days or imputing values. Third, the fitted model can report which conditions contributed most to its predictions through feature importance and related diagnostics, allowing us to verify that the inferred drivers of high temperatures align with established meteorological cause‑and‑effect relationships.</p>
 </section>
 <section id="analysis-and-results" class="level2">
 <h2 class="anchored" data-anchor-id="analysis-and-results">Analysis and Results</h2>
@@ -2443,7 +2443,78 @@ Important
 <h3 class="anchored" data-anchor-id="data-exploration-and-visualization">Data Exploration and Visualization</h3>
 <section id="data-sources-and-collection-process" class="level4">
 <h4 class="anchored" data-anchor-id="data-sources-and-collection-process">Data Sources and Collection Process</h4>
-<p>The temperature data used in this study were obtained from the National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network <span class="citation" data-cites="asos_dataset_noaa">(<a href="#ref-asos_dataset_noaa" role="doc-biblioref">Environmental Information (NCEI) 2026</a>)</span>. ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. The dataset used here consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables such as timestamp (<code>datetime_utc</code>), wind direction (<code>wind_dir</code>), wind speed (<code>wind_speed_kt</code>), wind gust (<code>wind_gust_kt</code>), visibility (<code>visibility_sm</code>), weather and sky condition fields, temperature (<code>temp_c</code>), dewpoint (<code>dewpoint_c</code>), relative humidity (<code>rh_pct</code>), and altimeter pressure (<code>altimeter_inhg</code>).</p>
+<p>The temperature data used in this study were obtained from the National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network <span class="citation" data-cites="asos_dataset_noaa">(<a href="#ref-asos_dataset_noaa" role="doc-biblioref">Environmental Information (NCEI) 2026</a>)</span>. ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. The dataset used in this study consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables as described in the following table:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 15%">
+<col style="width: 11%">
+<col style="width: 73%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Variable Name</th>
+<th>Variable</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Timestamp</td>
+<td><code>datetime_utc</code></td>
+<td>Date and time of the observation in Coordinated Universal Time (UTC).</td>
+</tr>
+<tr class="even">
+<td>Wind Direction</td>
+<td><code>wind_dir</code></td>
+<td>Direction the wind is coming from, usually reported in degrees.</td>
+</tr>
+<tr class="odd">
+<td>Wind Speed</td>
+<td><code>wind_speed_kt</code></td>
+<td>Sustained wind speed in knots.</td>
+</tr>
+<tr class="even">
+<td>Wind Gust</td>
+<td><code>wind_gust_kt</code></td>
+<td>Maximum gust wind speed in knots.</td>
+</tr>
+<tr class="odd">
+<td>Visibility</td>
+<td><code>visibility_sm</code></td>
+<td>Horizontal visibility in statute miles. 10sm Max.</td>
+</tr>
+<tr class="even">
+<td>Weather</td>
+<td><code>weather</code></td>
+<td>Reported weather phenomena, such as rain, fog, or thunderstorms.</td>
+</tr>
+<tr class="odd">
+<td>Sky Condition</td>
+<td><code>sky_condition</code></td>
+<td>Description of cloud cover or sky state, such as clear, scattered, broken, or overcast.</td>
+</tr>
+<tr class="even">
+<td>Temperature</td>
+<td><code>temp_c</code></td>
+<td>Air temperature in degrees Celsius.</td>
+</tr>
+<tr class="odd">
+<td>Dew Point</td>
+<td><code>dewpoint_c</code></td>
+<td>Dew point temperature in degrees Celsius.</td>
+</tr>
+<tr class="even">
+<td>Relative Humidity</td>
+<td><code>rh_pct</code></td>
+<td>Relative humidity expressed as a percentage.</td>
+</tr>
+<tr class="odd">
+<td>Altimeter Pressure</td>
+<td><code>altimeter_inhg</code></td>
+<td>Altimeter setting or atmospheric pressure in inches of mercury.</td>
+</tr>
+</tbody>
+</table>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -2696,33 +2767,27 @@ Important
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>processing_stats <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">Statistic =</span> <span class="fu">c</span>(</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Total 5-minute observations in full dataset&quot;</span>,</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Non-missing temperature values in full dataset&quot;</span>,</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Non-missing 5-minute temperature changes in full dataset&quot;</span>,</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Minimum 5-minute temperature change in full dataset (°C)&quot;</span>,</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Maximum 5-minute temperature change in full dataset (°C)&quot;</span>,</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Days with daily high temperature values in full dataset&quot;</span></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">Value =</span> <span class="fu">c</span>(</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">nrow</span>(df_all),</span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sum</span>(<span class="sc">!</span><span class="fu">is.na</span>(df_all<span class="sc">$</span>temp)),</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">nrow</span>(df_5min_change_all),</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="fu">min</span>(df_5min_change_all<span class="sc">$</span>temp_change_5min, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">max</span>(df_5min_change_all<span class="sc">$</span>temp_change_5min, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">nrow</span>(daily_high)</span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>  processing_stats,</span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Observation counts and temperature-change diagnostics for the full KLAX record, 2000-2026&quot;</span>,</span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">digits =</span> <span class="dv">2</span></span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Total 5-minute observations&quot;</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Total non-missing temperature values&quot;</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Days with daily high temperature values&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">Value =</span> <span class="fu">c</span>(</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">nrow</span>(df_all),</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">sum</span>(<span class="sc">!</span><span class="fu">is.na</span>(df_all<span class="sc">$</span>temp)),</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">nrow</span>(daily_high)</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>  processing_stats,</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Observation counts for KLAX, 2000-2026&quot;</span>,</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">digits =</span> <span class="dv">2</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div id="tbl-observations" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-observations-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table 1: Observation counts and temperature-change diagnostics for the full KLAX record, 2000-2026
+Table 1: Observation counts for KLAX, 2000-2026
 </figcaption>
 <div aria-describedby="tbl-observations-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -2735,28 +2800,16 @@ Table 1: Observation counts and temperature-change diagnostics for the full KLA
 </thead>
 <tbody>
 <tr class="odd">
-<td style="text-align: left;">Total 5-minute observations in full dataset</td>
-<td style="text-align: right;">2523612.0</td>
+<td style="text-align: left;">Total 5-minute observations</td>
+<td style="text-align: right;">2523612</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">Non-missing temperature values in full dataset</td>
-<td style="text-align: right;">2520906.0</td>
+<td style="text-align: left;">Total non-missing temperature values</td>
+<td style="text-align: right;">2520906</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">Non-missing 5-minute temperature changes in full dataset</td>
-<td style="text-align: right;">2520205.0</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Minimum 5-minute temperature change in full dataset (°C)</td>
-<td style="text-align: right;">-13.9</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Maximum 5-minute temperature change in full dataset (°C)</td>
-<td style="text-align: right;">27.0</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Days with daily high temperature values in full dataset</td>
-<td style="text-align: right;">9337.0</td>
+<td style="text-align: left;">Days with daily high temperature values</td>
+<td style="text-align: right;">9337</td>
 </tr>
 </tbody>
 </table>
@@ -2765,7 +2818,8 @@ Table 1: Observation counts and temperature-change diagnostics for the full KLA
 </figure>
 </div>
 </div>
-<p>For this analysis, the exploratory analysis was restricted to the most recent five years of data beginning from May 1, 2026 in order to maintain a manageable dataset size while emphasizing recent conditions most relevant to the predictive modeling task. After filtering, <a href="#tbl-observations" class="quarto-xref">Table 1</a> shows the resulting subset contains 436,937 5-minute observations, of which 436,292 remain after removing records with missing temperature-change values, along with 1,705 days for which daily high temperature could be computed. This subset preserves both the high temporal resolution of the original ASOS data and the seasonal coverage needed to support analysis of daily high temperature variability.</p>
+<p>For this analysis, we begin by finding the number of observations within the dataset.<br>
+<a href="#tbl-observations" class="quarto-xref">Table 1</a> shows the total number of observations and the total number of non-missing values. There are 9,337 values for daily high temperatures. This provides a large amount of data for this analysis and the modeling of daily high temperatures later in this study.</p>
 </section>
 <section id="descriptive-statistics" class="level4">
 <h4 class="anchored" data-anchor-id="descriptive-statistics">Descriptive Statistics</h4>
@@ -2788,14 +2842,14 @@ Table 1: Observation counts and temperature-change diagnostics for the full KLA
 <span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
 <span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>  continuous_summary,</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Descriptive statistics for KLAX 5-minute meteorological variables over the full 2000–2026 record.&quot;</span>,</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Descriptive statistics for KLAX 5-minute variables, 2000–2026.&quot;</span>,</span>
 <span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">digits =</span> <span class="dv">2</span></span>
 <span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div id="tbl-descriptive-stats" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-descriptive-stats-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table 2: Descriptive statistics for KLAX 5-minute meteorological variables over the full 2000–2026 record.
+Table 2: Descriptive statistics for KLAX 5-minute variables, 2000–2026.
 </figcaption>
 <div aria-describedby="tbl-descriptive-stats-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -2909,8 +2963,9 @@ Table 2: Descriptive statistics for KLAX 5-minute meteorological variables over
 </figure>
 </div>
 </div>
-<p>The descriptive statistics of the selected continuous variables in <a href="#tbl-descriptive-stats" class="quarto-xref">Table 2</a> indicate that most predictors are well-behaved but not strictly Gaussian, with moderate skewness, truncation, and differing scales across variables, which supports the use of a flexible, nonparametric model such as XGBoost. Wind speed and gusts show right-tailed behavior with occasional stronger events, while relative humidity exhibits a broader spread and occasional very dry conditions. Visibility is heavily concentrated at its upper bound (10 statute miles), creating a pronounced ceiling effect, and altimeter readings are tightly clustered with minimal variance. In combination, these features form a predictor set with mixed distributional shapes, bounded ranges, and differing levels of measurement frequency, such as the smaller number of observations for gusts, making tree-based gradient boosting particularly suitable because it does not rely on linearity or normality assumptions and handles non-linear interactions and threshold effects naturally.</p>
-<p>From a preprocessing standpoint, the ranges and standard deviations suggest that standard feature scaling or normalization can be used to stabilize training without requiring aggressive transformations of each variable, further aligning with standard XGBoost workflows. Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability and are likely to provide strong predictive signal. XGBoost can also accommodate the reduced sample size for wind gusts, by learning optimal directions for missing values in the tree structure rather than requiring imputation strategies. Taken together, these descriptive statistics justify the choice of XGBoost as an appropriate modeling framework for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.</p>
+<p>The descriptive statistics of the selected continuous variables in <a href="#tbl-descriptive-stats" class="quarto-xref">Table 2</a> indicate that most predictors are well-behaved but do not strictly follow a normal Gaussian distribution, with moderate skewness, truncation, and differing scales across variables. This supports the use of a flexible, nonparametric model such as XGBoost. Wind speed and gusts show positive, right-skew with the mean being greater than the median and larger max values further indicating the long right tail. Wind gusts also show significantly less observations compared to the other variables. On the other hand, relative humidity exhibits a negative, left-skew with occasional very dry conditions.</p>
+<p>Furthermore, visibility is heavily concentrated at its upper bound of 10 statute miles. Altimeter readings are tightly clustered around the mean with minimal variance. In combination, these features form a predictor set with mixed distributional shapes, bounded ranges, and differing levels of measurement frequency, such as the smaller number of observations for gusts, making tree-based gradient boosting particularly suitable because it does not rely on linearity or normality assumptions and handles non-linear interactions and threshold effects naturally.</p>
+<p>Variables such as wind speed, dewpoint temperature, and relative humidity carry substantial variability which can provide strong predictive signals. XGBoost can also accommodate the reduced sample size for wind gusts. Taken together, these descriptive statistics justify the choice of XGBoost as the selected model for this dataset, as it can exploit non-linear relationships and interaction effects while remaining robust to skewed, bounded, and partially observed variables.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -2935,24 +2990,25 @@ Table 2: Descriptive statistics for KLAX 5-minute meteorological variables over
 <span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
 <span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>  )</span>
 <span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
-<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>  temp_by_wind_summary,</span>
-<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Descriptive statistics for air temperature grouped by east-wind and west-wind observations across the full KLAX dataset.&quot;</span>,</span>
-<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">digits =</span> <span class="dv">2</span></span>
-<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(temp_by_wind_summary)[<span class="dv">1</span>] <span class="ot">&lt;-</span> <span class="st">&quot;Wind Group&quot;</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>  temp_by_wind_summary,</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Descriptive statistics for air temperature grouped by east-wind and west-wind observations at KLAX, 2000-2026.&quot;</span>,</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">digits =</span> <span class="dv">2</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div id="tbl-temp-by-wind-group" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-temp-by-wind-group-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table 3: Descriptive statistics for air temperature grouped by east-wind and west-wind observations across the full KLAX dataset.
+Table 3: Descriptive statistics for air temperature grouped by east-wind and west-wind observations at KLAX, 2000-2026.
 </figcaption>
 <div aria-describedby="tbl-temp-by-wind-group-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
 <table class="cell caption-top table table-sm table-striped small">
 <thead>
 <tr class="header">
-<th style="text-align: left;">wind_group</th>
+<th style="text-align: left;">Wind Group</th>
 <th style="text-align: right;">N</th>
 <th style="text-align: right;">Mean</th>
 <th style="text-align: right;">SD</th>
@@ -2993,6 +3049,7 @@ Table 3: Descriptive statistics for air temperature grouped by east-wind and we
 </figure>
 </div>
 </div>
+<p><a href="#tbl-temp-by-wind-group" class="quarto-xref">Table 3</a> provides a summary of air temperatures based on whether the wind is blowing from east to west or west to east. First, west winds more occur frequently with roughly three times as many observations as east winds. West winds also exhibit higher mean and median temperatures when compared to east winds. East winds show a much lower minimum temperature, indicating that the east winds are more likely to occur during cooler seasonal periods. While this appears counterintuitive to the typical understanding that cool marine west winds provide cooler temperatures, this could be indicative of underlying seasonal weather patterns where east winds might prevail during cooler seasons like the winter months. Furthermore, while the average temperatures may be higher while west winds prevail, wind gusts from the west can still provide a stronger and more frequent cooling effect when compared to east gusts. This is seen later in this study in <a href="#fig-3h-wind-change" class="quarto-xref">Figure 8</a> and supports the idea of an underlying seasonal component for the difference between average temperatures between east and west wind groups.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3050,13 +3107,13 @@ Table 3: Descriptive statistics for air temperature grouped by east-wind and we
 <span id="cb5-52"><a href="#cb5-52" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb5-53"><a href="#cb5-53" aria-hidden="true" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
 <span id="cb5-54"><a href="#cb5-54" aria-hidden="true" tabindex="-1"></a>  summary_stats <span class="sc">%&gt;%</span> <span class="fu">select</span>(Statistic, Value),</span>
-<span id="cb5-55"><a href="#cb5-55" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Summary statistics for full-record 5-minute temperature changes at KLAX.&quot;</span></span>
+<span id="cb5-55"><a href="#cb5-55" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption =</span> <span class="st">&quot;Summary statistics for 5-minute temperature changes at KLAX.&quot;</span></span>
 <span id="cb5-56"><a href="#cb5-56" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div id="tbl-temp-summary" class="cell quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-tbl figure">
 <figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-tbl" id="tbl-temp-summary-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-Table 4: Summary statistics for full-record 5-minute temperature changes at KLAX.
+Table 4: Summary statistics for 5-minute temperature changes at KLAX.
 </figcaption>
 <div aria-describedby="tbl-temp-summary-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 <div class="cell-output-display">
@@ -3115,10 +3172,11 @@ Table 4: Summary statistics for full-record 5-minute temperature changes at KLA
 </figure>
 </div>
 </div>
+<p><strong><em>ADD DISCUSSION</em></strong></p>
 </section>
 <section id="initial-findings-and-insights" class="level4">
 <h4 class="anchored" data-anchor-id="initial-findings-and-insights">Initial Findings and Insights</h4>
-<p>Exploratory analysis of the filtered KLAX dataset reveals a clear and persistent annual cycle in daily high temperature. The time series of daily high temperatures over the last five years in <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a> shows regular seasonal oscillation, with warmer peaks in late summer and cooler conditions in winter, while still exhibiting day-to-day fluctuations and occasional extreme warm events.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> Exploratory analysis of the filtered KLAX dataset reveals a clear and persistent annual cycle in daily high temperature. The time series of daily high temperatures over the last five years in <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a> shows regular seasonal oscillation, with warmer peaks in late summer and cooler conditions in winter, while still exhibiting day-to-day fluctuations and occasional extreme warm events.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3162,7 +3220,7 @@ Figure 1: Daily high temperature at KLAX over the recent 5-year analysis window
 </div>
 </div>
 </div>
-<p>This seasonal structure is reinforced by the monthly boxplots in <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, which show median daily highs increasing gradually from winter through late summer and declining again through autumn, with August and September containing the highest medians and some of the warmest outlying days in the sample.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> This seasonal structure is reinforced by the monthly boxplots in <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, which show median daily highs increasing gradually from winter through late summer and declining again through autumn, with August and September containing the highest medians and some of the warmest outlying days in the sample.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3203,7 +3261,7 @@ Figure 2: Monthly distribution of daily high temperature at KLAX over the recen
 </div>
 </div>
 </div>
-<p><a href="#fig-daily-high-ranges" class="quarto-xref">Figure 3</a> below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> <a href="#fig-daily-high-ranges" class="quarto-xref">Figure 3</a> below shows the same seasonal structure at finer resolution, with mean daily highs climbing steadily from January into late summer, peaking in early September, and then declining through autumn into December. The shaded band and dashed lines highlight a wider spread between the daily min and max during the cooler winter season, indicating that while the average highs are higher in late summer, the cooler individual winter days actually exhibit greater variability and more frequent extremes than in the warmer months.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3267,7 +3325,7 @@ Figure 3: Daily high temperature at KLAX by day of year over the recent 5-year 
 </div>
 </div>
 </div>
-<p>The overall distribution of daily high temperatures in <a href="#fig-daily-high-hist" class="quarto-xref">Figure 4</a> appears to be normally distributed and concentrated within a moderate range, with most days falling between approximately 16 °C and 24 °C and relatively few very cool or very hot days.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> The overall distribution of daily high temperatures in <a href="#fig-daily-high-hist" class="quarto-xref">Figure 4</a> appears to be normally distributed and concentrated within a moderate range, with most days falling between approximately 16 °C and 24 °C and relatively few very cool or very hot days.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3302,8 +3360,7 @@ Figure 4: Histogram of daily high temperatures at KLAX over the recent 5-year a
 </div>
 </div>
 </div>
-<p>Together, <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a>, <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, and <a href="#fig-daily-high-hist" class="quarto-xref">Figure 4</a> show that the dataset contains strong seasonal signal without being dominated by erratic or implausible daily values, making it suitable for subsequent machine learning analysis.</p>
-<p>At shorter timescales, the five-minute observations exhibit strong persistence. The histogram of all 5-minute temperature changes in <a href="#fig-temp-change-all" class="quarto-xref">Figure 5</a> shows an overwhelming concentration at 0 °C, and the non-zero histogram in <a href="#fig-temp-change-nonzero" class="quarto-xref">Figure 6</a> confirms that even when change occurs, most changes are small in magnitude and cluster tightly around zero.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> Together, <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a>, <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, and <a href="#fig-daily-high-hist" class="quarto-xref">Figure 4</a> show that the dataset contains strong seasonal signal without being dominated by erratic or implausible daily values, making it suitable for subsequent machine learning analysis.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3346,6 +3403,7 @@ Figure 5: Histogram of all 5-minute temperature changes at KLAX across the full
 </div>
 </div>
 </div>
+<p><strong><em>ADD DISCUSSION</em></strong> At shorter timescales, the five-minute observations exhibit strong persistence. The histogram of all 5-minute temperature changes in <a href="#fig-temp-change-all" class="quarto-xref">Figure 5</a> shows an overwhelming concentration at 0 °C, and the non-zero histogram in <a href="#fig-temp-change-nonzero" class="quarto-xref">Figure 6</a> confirms that even when change occurs, most changes are small in magnitude and cluster tightly around zero.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3388,7 +3446,7 @@ Figure 6: Histogram of non-zero 5-minute temperature changes at KLAX across the
 </div>
 </div>
 </div>
-<p>This pattern is consistent with the summary statistics in <a href="#tbl-temp-summary" class="quarto-xref">Table 4</a>: approximately 70.76% of five-minute intervals show exactly 0 °C change, the mean absolute five-minute change is 0.17 °C, the median absolute change is 0 °C, and the 75th percentile is only 0.5 °C, indicating that short-term temperature changes at KLAX are typically gradual rather than abrupt.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> This pattern is consistent with the summary statistics in <a href="#tbl-temp-summary" class="quarto-xref">Table 4</a>: approximately 70.76% of five-minute intervals show exactly 0 °C change, the mean absolute five-minute change is 0.17 °C, the median absolute change is 0 °C, and the 75th percentile is only 0.5 °C, indicating that short-term temperature changes at KLAX are typically gradual rather than abrupt.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3428,6 +3486,7 @@ Figure 7: Distribution of 3-hour temperature changes from KLAX 5-minute observa
 </div>
 </div>
 </div>
+<p><strong><em>ADD DISCUSSION</em></strong> Given the small changes in temperature during a given 5-minute interval, we expand the interval to a 3-hour range to better observe temperature changes.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3481,7 +3540,7 @@ Figure 8: 3-hour temperature change following gust observations at KLAX, groupe
 </div>
 </div>
 </div>
-<p>The diurnal cycle plot in <a href="#fig-diurnal-cycle" class="quarto-xref">Figure 9</a> provides an additional view of the short-term structure by averaging temperature across each hour of the day during the last two years. That figure shows coolest temperatures during the early morning hours, a steady increase through the morning, and a peak in the early afternoon before gradual evening cooling, which is consistent with expected solar-heating dynamics. This smooth and interpretable daily pattern suggests that time-based predictors such as hour, day, or season are likely to be useful in downstream modeling.</p>
+<p><a href="#fig-3h-wind-change" class="quarto-xref">Figure 8</a> compares the 3-hour temperature changes after gusts from both east and west, or onshore versus offshore gusts. As previously discussed, average temperatures tend be higher during periods when west winds are present. However, this does not imply that west winds and gusts do not provide a cooling effect. As seen in <a href="#fig-3h-wind-change" class="quarto-xref">Figure 8</a>, Westerly gusts from offshore provide both a more frequent and stronger cooling effect than easterly gusts from onshore.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3519,12 +3578,12 @@ Figure 9: Average diurnal temperature cycle at KLAX based on the recent 5-year 
 </div>
 </div>
 </div>
+<p><strong><em>ADD DISCUSSION</em></strong> The diurnal cycle plot in <a href="#fig-diurnal-cycle" class="quarto-xref">Figure 9</a> provides an additional view of the short-term structure by averaging temperature across each hour of the day during the last two years. That figure shows coolest temperatures during the early morning hours, a steady increase through the morning, and a peak in the early afternoon before gradual evening cooling, which is consistent with expected solar-heating dynamics. This smooth and interpretable daily pattern suggests that time-based predictors such as hour, day, or season are likely to be useful in downstream modeling.</p>
 </section>
 <section id="unexpected-patterns-and-anomalies" class="level4">
 <h4 class="anchored" data-anchor-id="unexpected-patterns-and-anomalies">Unexpected Patterns and Anomalies</h4>
-<p>Although most short-term temperature changes are small, the exploratory analysis also reveals a small number of unusually large jumps. Based on the absolute change distribution shown in <a href="#fig-temp-change-all" class="quarto-xref">Figure 5</a> and <a href="#fig-temp-change-nonzero" class="quarto-xref">Figure 6</a>, the 90th and 95th percentiles are approximately 0.6 °C, while the 99th percentile is 1.1 °C and can be used as a practical threshold for identifying abnormal five-minute changes. Only 4,332 observations, or about 0.99% of the five-minute records, exceed this threshold, indicating that abrupt short-term temperature jumps are rare in the dataset overall.</p>
-<p>The largest observed absolute five-minute change reaches 22.8 °C, which is physically extreme for such a short interval and likely reflects either a reporting artifact, a timing inconsistency, or another unusual observational circumstance rather than typical atmospheric behavior. Even so, the rarity of these values suggests that they do not dominate the series, but they do warrant attention during preprocessing because they may affect derived features or distort model fitting if left untreated. Furthermore, the presence of long stretches of unchanged temperature and a small number of large jumps indicates that a more practical approach of analysis could be to use a larger timescale.</p>
-<p>A more detailed example of short-term multi-variable structure is shown in <a href="#fig-multivariable-window" class="quarto-xref">Figure 10</a>, which presents a 36-hour sequence of 5-minute KLAX observations from July 22 to July 23, 2025. Over this interval, temperature increases during the daytime, cools overnight, and rises again the following day, while dewpoint remains comparatively stable, indicating that much of the variation is associated with heating and cooling rather than large shifts in moisture content. Relative humidity varies inversely with temperature, wind speed increases during the afternoon with several gusts above 20 kt, visibility remains near 10 statute miles for most of the period, and altimeter pressure changes gradually rather than erratically. This figure shows that the ASOS dataset captures coherent meteorological relationships across variables at fine temporal resolution and supports the use of these predictors in feature engineering for the XGBoost model.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> Although most short-term temperature changes are small, the exploratory analysis also reveals a small number of unusually large jumps. Based on the absolute change distribution shown in <a href="#fig-temp-change-all" class="quarto-xref">Figure 5</a> and <a href="#fig-temp-change-nonzero" class="quarto-xref">Figure 6</a>, the 90th and 95th percentiles are approximately 0.6 °C, while the 99th percentile is 1.1 °C and can be used as a practical threshold for identifying abnormal five-minute changes. Only 4,332 observations, or about 0.99% of the five-minute records, exceed this threshold, indicating that abrupt short-term temperature jumps are rare in the dataset overall.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> The largest observed absolute five-minute change reaches 22.8 °C, which is physically extreme for such a short interval and likely reflects either a reporting artifact, a timing inconsistency, or another unusual observational circumstance rather than typical atmospheric behavior. Even so, the rarity of these values suggests that they do not dominate the series, but they do warrant attention during preprocessing because they may affect derived features or distort model fitting if left untreated. Furthermore, the presence of long stretches of unchanged temperature and a small number of large jumps indicates that a more practical approach of analysis could be to use a larger timescale.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3630,11 +3689,12 @@ Figure 10: Multi-variable 5-minute meteorological observations at KLAX from Jul
 </div>
 </div>
 </div>
+<p><strong><em>ADD DISCUSSION</em></strong> A more detailed example of short-term multi-variable structure is shown in <a href="#fig-multivariable-window" class="quarto-xref">Figure 10</a>, which presents a 36-hour sequence of 5-minute KLAX observations from July 22 to July 23, 2025. Over this interval, temperature increases during the daytime, cools overnight, and rises again the following day, while dewpoint remains comparatively stable, indicating that much of the variation is associated with heating and cooling rather than large shifts in moisture content. Relative humidity varies inversely with temperature, wind speed increases during the afternoon with several gusts above 20 kt, visibility remains near 10 statute miles for most of the period, and altimeter pressure changes gradually rather than erratically. This figure shows that the ASOS dataset captures coherent meteorological relationships across variables at fine temporal resolution and supports the use of these predictors in feature engineering for the XGBoost model.</p>
 </section>
 <section id="implications-for-modeling" class="level4">
 <h4 class="anchored" data-anchor-id="implications-for-modeling">Implications for Modeling</h4>
-<p>Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. <strong><em>Add Discussion on time of day</em></strong> At the same time, the descriptive statistics in <a href="#tbl-descriptive-stats" class="quarto-xref">Table 2</a> suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model.</p>
-<p>These observations directly inform later stages of the project. Seasonal and diurnal patterns visible in <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a>, <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, and <a href="#fig-diurnal-cycle" class="quarto-xref">Figure 9</a> motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in <a href="#fig-multivariable-window" class="quarto-xref">Figure 10</a> suggest that the aggregated features may improve predictive performance. Consequently, the data exploration stage not only describes the structure of the KLAX record but also provides a practical foundation for preprocessing, feature engineering, and model evaluation in the XGBoost framework.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. <strong><em>Add Discussion on time of day</em></strong> At the same time, the descriptive statistics in <a href="#tbl-descriptive-stats" class="quarto-xref">Table 2</a> suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model.</p>
+<p><strong><em>ADD DISCUSSION</em></strong> These observations directly inform later stages of the project. Seasonal and diurnal patterns visible in <a href="#fig-daily-high-ts" class="quarto-xref">Figure 1</a>, <a href="#fig-monthly-boxplot" class="quarto-xref">Figure 2</a>, and <a href="#fig-diurnal-cycle" class="quarto-xref">Figure 9</a> motivate the inclusion of time-based predictors, while the stable relationships among temperature, dewpoint, humidity, wind, visibility, and pressure shown in <a href="#fig-multivariable-window" class="quarto-xref">Figure 10</a> suggest that the aggregated features may improve predictive performance. Consequently, the data exploration stage not only describes the structure of the KLAX record but also provides a practical foundation for preprocessing, feature engineering, and model evaluation in the XGBoost framework.</p>
 </section>
 </section>
 <section id="modeling-and-results" class="level3">
