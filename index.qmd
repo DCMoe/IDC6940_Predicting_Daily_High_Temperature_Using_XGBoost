@@ -37,29 +37,30 @@ Nice report!
 
 ## Introduction
 
-Accurate prediction of daily high temperatures is a critical component of modern weather forecasting, influencing decision-making across sectors such as energy management, transportation, and public safety. 
-Reliable temperature forecasts support efficient resource allocation, including electricity demand planning and climate-sensitive operations in aviation and infrastructure. 
-In recent years, advances in data-driven modeling have complemented traditional numerical weather prediction methods, offering improved accuracy and adaptability for localized forecasting tasks [@WANG2023101499]. 
-Machine learning techniques, particularly ensemble methods, have demonstrated strong performance in capturing nonlinear relationships within meteorological data [@Airlangga_2025]. 
+The accurate prediction of daily high temperatures is an important component of modern weather forecasting.
+It influences decision-making across various market sectors such as energy management, transportation, and public safety. 
+By obtaining reliable temperature forecasts, resource can be efficiently allocated in areas such as electricity demand planning and climate-sensitive operations in aviation and infrastructure. 
+In recent years, advances in data-driven modeling have improved upon traditional numerical weather prediction methods, offering improved accuracy and adaptability for localized forecasting tasks [@WANG2023101499]. 
+Machine learning techniques, in particular ensemble methods, have demonstrated strong performance in capturing nonlinear and interaction relationships within meteorological data [@Airlangga_2025]. 
 Among these, Extreme Gradient Boosting (XGBoost) has emerged as a powerful and efficient algorithm for predictive modeling in structured datasets [@Chen_2016].
 
-Recent research has increasingly explored the use of machine learning techniques to enhance weather prediction accuracy, particularly in short-term forecasting applications. 
+Recent research has been exploring the use of various machine learning techniques to enhance weather prediction accuracy, particularly in short-term forecasting applications. 
 Ensemble learning methods such as XGBoost have been shown to outperform traditional statistical models and complement numerical weather prediction systems by effectively capturing nonlinear relationships and correcting systematic biases [@DONG2023105579]. 
 Prior studies have applied XGBoost to tasks such as precipitation forecasting and bias correction of meteorological outputs, demonstrating improved predictive performance across diverse geographic regions [@DONG2023105579]. 
-Additionally, comparative analyses of machine learning algorithms highlight the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023], [@Singh2023MachineLF], [@Airlangga_2025]. 
+Additionally, a comparative analyses of machine learning algorithms highlights the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023], [@Singh2023MachineLF], [@Airlangga_2025]. 
 Despite these advances, many studies focus on regional or large-scale forecasting problems, leaving opportunities for more localized, site-specific modeling of daily temperature using high-frequency observational data. 
 XGBoost has also been documented in tutorial and use-case contexts for its implementation and interpretability in applied machine learning problems [@xgboost_tutorial].
 
-This study focuses on predicting daily high temperatures at Los Angeles International Airport (KLAX) station using high-frequency observational data obtained from the National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. 
-The dataset consists of five-minute interval weather measurements, providing a detailed temporal view of atmospheric conditions that can be aggregated to support daily forecasting tasks [@Khan_2025_MultiOutputTemp]. 
-By leveraging this granular data, the study aims to capture short-term variability and improve the accuracy of daily maximum temperature predictions. 
-An XGBoost regression model is developed to model the relationship between meteorological features and daily high temperature, with an emphasis on evaluating its predictive performance in a localized airport environment. 
-This approach provides a practical framework for applying machine learning techniques to site-specific temperature forecasting using publicly available observational data.
+This study focuses on predicting daily high temperatures at the Los Angeles International Airport (KLAX) station using high-frequency observational data obtained from the National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]. 
+The dataset consists of five-minute interval weather measurements, providing a detailed view of atmospheric conditions that can be aggregated to support daily forecasting tasks [@Khan_2025_MultiOutputTemp]. 
+By leveraging this granular data, this study aims to capture shorter-term variability and improve the accuracy of daily maximum temperature predictions. 
+An XGBoost regression model is developed to model the relationship between meteorological features and daily high temperatures, with an emphasis on evaluating its predictive performance in a localized airport environment.
+This approach provides a practical framework for applying machine learning techniques to site-specific temperature forecasting using publicly available data.
 
-The primary objective of this study is to develop and evaluate an XGBoost-based model for predicting daily high temperatures at LAX using aggregated ASOS observational data. 
-Model performance is assessed using a comprehensive set of regression evaluation metrics, including MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
+The primary objective of this study is to develop and evaluate an XGBoost-based model for predicting daily high temperatures at the KLAX airport in Los Angeles, California using the aggregated NOAA ASOS data. 
+The model performance is assessed using a comprehensive set of regression evaluation metrics, including MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
 In addition, the study examines feature importance to better understand the contribution of key meteorological variables to model predictions. 
-By focusing on a single location, KLAX, and leveraging high-resolution data, this research aims to demonstrate the applicability of XGBoost for localized temperature forecasting. 
+By focusing on a single location, KLAX, and leveraging high-frequency data, this research aims to demonstrate the applicability of XGBoost for localized temperature forecasting. 
 The findings contribute to the growing body of work on data-driven weather prediction and highlight the potential of XGBoost as a practical tool for operational forecasting tasks, consistent with prior statistical temperature prediction work in California and broader North America [@dias2018statistical].
 
 ## Methods
@@ -154,6 +155,10 @@ df_all <- df_raw %>%
   ) %>%
   mutate(
     visibility_sm = ifelse(is.finite(visibility_sm), visibility_sm, NA_real_)
+  ) %>%
+  mutate(
+    wind_gust_kt = ifelse(!is.na(wind_gust_kt) & wind_gust_kt > 100, NA_real_, wind_gust_kt),
+    visibility_sm = ifelse(!is.na(visibility_sm) & visibility_sm > 10, NA_real_, visibility_sm)
   ) %>%
   arrange(timestamp)
 
@@ -913,7 +918,7 @@ save_plot(multi_plot, "fig_multivariable_recent36h.png", width = 11, height = 14
 #### Implications for Modeling
 
 Overall, the exploratory results indicate that the KLAX dataset is well suited for prediction of daily high temperature. 
-The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. 
+The data exhibits a strong seasonal and diurnal structure, realistic daily variability, and relatively stable short-term temperature behavior, all of which provide meaningful information for a supervised learning model. ***Add Discussion on time of day*** 
 At the same time, the descriptive statistics in @tbl-descriptive-stats suggest that standard preprocessing steps such as scaling and normalization should be sufficient for the use of the tree-based gradient boosting XGBoost model. 
 
 These observations directly inform later stages of the project. 
@@ -930,9 +935,279 @@ Consequently, the data exploration stage not only describes the structure of the
 
 -   **Tell a story about what the data reveals.**
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Baseline XGBoost Modeling Dataset
+# =========================================================
+# Build a daily-level dataset for predicting daily high temperature.
 
+library(xgboost)
+
+# Daily aggregates for key predictors over full record
+daily_features <- df_full %>%
+  mutate(date = as_date(timestamp)) %>%
+  group_by(date) %>%
+  summarise(
+    daily_high_temp       = max(temp, na.rm = TRUE),
+    daily_mean_temp       = mean(temp, na.rm = TRUE),
+    daily_mean_dewpoint   = mean(dewpoint_c, na.rm = TRUE),
+    daily_mean_rh         = mean(rh_pct, na.rm = TRUE),
+    daily_mean_wind_speed = mean(wind_speed_kt, na.rm = TRUE),
+    daily_max_wind_gust   = max(wind_gust_kt, na.rm = TRUE),
+    daily_mean_visibility = mean(visibility_sm, na.rm = TRUE),
+    daily_mean_altimeter  = mean(altimeter_inhg, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    across(
+      c(
+        daily_high_temp,
+        daily_mean_temp,
+        daily_mean_dewpoint,
+        daily_mean_rh,
+        daily_mean_wind_speed,
+        daily_max_wind_gust,
+        daily_mean_visibility,
+        daily_mean_altimeter
+      ),
+      ~ ifelse(is.infinite(.x), NA_real_, .x)
+    )
+  ) %>%
+  filter(!is.na(daily_high_temp))
+
+daily_features <- daily_features %>%
+  mutate(
+    daily_mean_temp       = ifelse(daily_mean_temp < -50 | daily_mean_temp > 60, NA_real_, daily_mean_temp),
+    daily_mean_dewpoint   = ifelse(daily_mean_dewpoint < -50 | daily_mean_dewpoint > 80, NA_real_, daily_mean_dewpoint),
+    daily_mean_rh         = ifelse(daily_mean_rh < 0 | daily_mean_rh > 110, NA_real_, daily_mean_rh),
+    daily_mean_wind_speed = ifelse(daily_mean_wind_speed < 0 | daily_mean_wind_speed > 100, NA_real_, daily_mean_wind_speed),
+    daily_max_wind_gust   = ifelse(daily_max_wind_gust < 0 | daily_max_wind_gust > 100, NA_real_, daily_max_wind_gust),
+    daily_mean_visibility = ifelse(daily_mean_visibility < 0 | daily_mean_visibility > 10, NA_real_, daily_mean_visibility),
+    daily_mean_altimeter  = ifelse(daily_mean_altimeter < 25 | daily_mean_altimeter > 32, NA_real_, daily_mean_altimeter)
+  )
+
+# Add time-based features
+daily_model <- daily_features %>%
+  mutate(
+    year = year(date),
+    doy  = yday(date),
+    month = month(date)
+  ) %>%
+  arrange(date)
 ```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Train / Validation Split (Time-based)
+# =========================================================
+
+# Choose a split year, e.g., train up to 2018, validate on 2019+
+split_year <- 2018
+
+train_data <- daily_model %>%
+  filter(year <= split_year)
+
+valid_data <- daily_model %>%
+  filter(year > split_year)
+
+# Feature matrix
+feature_cols <- c(
+  "doy", "month", "year",
+  "daily_mean_temp",
+  "daily_mean_dewpoint",
+  "daily_mean_rh",
+  "daily_mean_wind_speed",
+  "daily_max_wind_gust",
+  "daily_mean_visibility",
+  "daily_mean_altimeter"
+)
+
+X_train <- as.matrix(train_data[, feature_cols])
+y_train <- train_data$daily_high_temp
+
+X_valid <- as.matrix(valid_data[, feature_cols])
+y_valid <- valid_data$daily_high_temp
+
+# Create DMatrix objects for XGBoost
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dvalid <- xgb.DMatrix(data = X_valid, label = y_valid)
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Baseline XGBoost Model (Daily High Temp)
+# =========================================================
+
+params <- list(
+  objective = "reg:squarederror",  # regression
+  eta       = 0.1,                 # learning rate
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8,
+  nthread   = parallel::detectCores() - 1
+)
+
+nrounds <- 300
+
+watchlist <- list(
+  train = dtrain,
+  valid = dvalid
+)
+
+set.seed(42)
+
+bst_baseline <- xgb.train(
+  params        = params,
+  data          = dtrain,
+  nrounds       = nrounds,
+  watchlist     = watchlist,
+  verbose       = 1,
+  print_every_n = 25
+)
+
+# Baseline performance on validation set
+pred_valid <- predict(bst_baseline, dvalid)
+
+baseline_rmse <- sqrt(mean((pred_valid - y_valid)^2))
+baseline_mae  <- mean(abs(pred_valid - y_valid))
+
+baseline_rmse
+baseline_mae
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Baseline Feature Importance
+# =========================================================
+
+importance <- xgb.importance(
+  model = bst_baseline,
+  feature_names = feature_cols
+)
+
+xgb.plot.importance(importance)
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Regression Metrics on Validation Set
+# =========================================================
+
+# Ensure numeric vectors
+y_actual <- as.numeric(y_valid)
+y_pred   <- as.numeric(pred_valid)
+
+# Residuals
+residuals <- y_actual - y_pred
+
+# MAE: Mean Absolute Error
+mae <- mean(abs(residuals), na.rm = TRUE)
+
+# MSE: Mean Squared Error
+mse <- mean(residuals^2, na.rm = TRUE)
+
+# RMSE: Root Mean Squared Error
+rmse <- sqrt(mse)
+
+# R^2: Coefficient of determination
+ss_res <- sum(residuals^2, na.rm = TRUE)
+ss_tot <- sum((y_actual - mean(y_actual, na.rm = TRUE))^2, na.rm = TRUE)
+r_squared <- 1 - ss_res / ss_tot
+
+# MAPE: Mean Absolute Percentage Error
+nonzero_idx <- which(y_actual != 0 & !is.na(y_actual) & !is.na(y_pred))
+mape <- mean(
+  abs((y_actual[nonzero_idx] - y_pred[nonzero_idx]) / y_actual[nonzero_idx]) * 100,
+  na.rm = TRUE
+)
+
+# Explained variance score
+var_actual <- var(y_actual, na.rm = TRUE)
+var_res    <- var(residuals, na.rm = TRUE)
+explained_variance <- 1 - var_res / var_actual
+
+
+metrics <- tibble(
+  Metric = c("MAE", "MSE", "RMSE", "R_squared", "MAPE_percent", "Explained_variance"),
+  Value  = c(mae, mse, rmse, r_squared, mape, explained_variance)
+)
+
+print(metrics)
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Validation Diagnostics Data
+# =========================================================
+
+valid_diag <- valid_data %>%
+  mutate(
+    actual_high = as.numeric(y_valid),
+    pred_high   = as.numeric(pred_valid),
+    residual    = actual_high - pred_high
+  )
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Predicted vs Actual Daily Highs
+# =========================================================
+
+plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
+  geom_point(alpha = 0.4, color = "steelblue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(
+    title    = "Predicted vs Actual Daily High Temperature",
+    subtitle = "Validation period (year > split_year)",
+    x        = "Predicted daily high (°C)",
+    y        = "Actual daily high (°C)"
+  ) +
+  theme_capstone
+
+plot_pred_vs_actual
+save_plot(plot_pred_vs_actual, "xgb_pred_vs_actual_valid.png")
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Residuals over Time
+# =========================================================
+
+plot_residual_time <- ggplot(valid_diag, aes(x = date, y = residual)) +
+  geom_hline(yintercept = 0, color = "grey50") +
+  geom_point(alpha = 0.4, color = "darkorange") +
+  labs(
+    title    = "Residuals over Time (Validation)",
+    subtitle = "Actual - predicted daily high (°C)",
+    x        = "Date",
+    y        = "Residual (°C)"
+  ) +
+  theme_capstone
+
+plot_residual_time
+save_plot(plot_residual_time, "xgb_residuals_time_valid.png")
+```
+
+```{r, warning=FALSE, message=FALSE}
+# =========================================================
+# Residuals vs Actual Temperature
+# =========================================================
+
+plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
+  geom_hline(yintercept = 0, color = "grey50") +
+  geom_point(alpha = 0.4, color = "seagreen") +
+  labs(
+    title    = "Residuals vs Actual Daily High (Validation)",
+    subtitle = "Check error structure across temperature range",
+    x        = "Actual daily high (°C)",
+    y        = "Residual (°C)"
+  ) +
+  theme_capstone
+
+plot_resid_vs_actual
+save_plot(plot_resid_vs_actual, "xgb_residuals_vs_actual_valid.png")
+```
+
 
 ### Conclusion
 
