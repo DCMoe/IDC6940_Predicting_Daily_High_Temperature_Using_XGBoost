@@ -24,17 +24,6 @@ editor:
 Slides: [slides.html](slides.html){target="_blank"} ( Go to `slides.qmd`
 to edit)
 
-::: callout-important
-**Remember:** Your goal is to make your audience understand and care
-about your findings. By crafting a compelling story, you can effectively
-communicate the value of your data science project.
-
-Carefully read this template since it has instructions and tips to
-writing!
-
-Nice report!
-:::
-
 ## Introduction
 
 The accurate prediction of daily high temperatures is an important component of modern weather forecasting.
@@ -100,26 +89,25 @@ The temperature data used in this study were obtained from the National Oceanic 
 ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. 
 The dataset used in this study consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables as described in the following table:
 
-| Variable Name      | Variable       | Description                                                                             |
-| ------------------ | -------------- | --------------------------------------------------------------------------------------- |
-| Timestamp          | `datetime_utc` | Date and time of the observation in Coordinated Universal Time (UTC).                   |
-| Wind Direction     | `wind_dir`     | Direction the wind is coming from, usually reported in degrees.                         |
-| Wind Speed         | `wind_speed_kt`| Sustained wind speed in knots.                                                          |
-| Wind Gust          | `wind_gust_kt` | Maximum gust wind speed in knots.                                                       |
-| Visibility         | `visibility_sm`| Horizontal visibility in statute miles. 10sm Max.                                       |
-| Weather            | `weather`      | Reported weather phenomena, such as rain, fog, or thunderstorms.                        |
-| Sky Condition      | `sky_condition`| Description of cloud cover or sky state, such as clear, scattered, broken, or overcast. |
-| Temperature        | `temp_c`       | Air temperature in degrees Celsius.                                                     |
-| Dew Point          | `dewpoint_c`   | Dew point temperature in degrees Celsius.                                               |
-| Relative Humidity  | `rh_pct`       | Relative humidity expressed as a percentage.                                            |
-| Altimeter Pressure | `altimeter_inhg`| Altimeter setting or atmospheric pressure in inches of mercury.                        |
+| Feature Name        | Feature           | Description                                                                       |
+| ------------------- | ----------------  | --------------------------------------------------------------------------------- |
+| Timestamp           | `datetime_utc`    | Date and time of the observation in Coordinated Universal Time (UTC).               |
+| Wind Direction      | `wind_dir`        | Direction the wind is coming from, usually reported in degrees.                     |
+| Wind Speed          | `wind_speed_kt`   | Sustained wind speed in knots.                                                      |
+| Wind Gust           | `wind_gust_kt`    | Maximum gust wind speed in knots.                                                   |
+| Visibility          | `visibility_sm`   | Horizontal visibility in statute miles. 10sm Max.                                   |
+| Weather             | `weather`         | Reported weather phenomena, such as rain, fog, or thunderstorms.                    |
+| Sky Condition       | `sky_condition`   | Description of cloud cover or sky state, such as clear, scattered, broken, or overcast. |
+| Temperature         | `temp_c`          | Air temperature in degrees Celsius.                                                 |
+| Dew Point           | `dewpoint_c`      | Dew point temperature in degrees Celsius.                                           |
+| Relative Humidity   | `rh_pct`          | Relative humidity expressed as a percentage.                                        |
+| Altimeter Pressure  | `altimeter_inhg`  | Altimeter setting or atmospheric pressure in inches of mercury.                     |
 
 ```{r, warning=FALSE, message=FALSE}
 # =========================================================
 # Setup Packages
 # =========================================================
-# Load the packages used for data import, transformation,
-# visualization, table output, and panel composition.
+# Load the packages
 
 library(arrow)
 library(dplyr)
@@ -129,6 +117,8 @@ library(knitr)
 library(patchwork)
 library(scales)
 library(tibble)
+library(tidyr)
+library(xgboost)
 
 # =========================================================
 # Setup Paths
@@ -990,92 +980,151 @@ Taken together, the data exploration stage not only describes the structure of t
 
 -   **Tell a story about what the data reveals.**
 
-```{r, warning=FALSE, message=FALSE}
-# =========================================================
-# Baseline XGBoost Modeling Dataset
-# =========================================================
-# Build a daily-level dataset for predicting daily high temperature.
+```{r, include=FALSE}
 
-library(xgboost)
+df_model_base <- df_all %>%
+  mutate(
+    date      = as.Date(timestamp),
+    hour      = hour(timestamp),
+    tod_window = case_when(
+      hour >= 0  & hour < 6  ~ "night",
+      hour >= 6  & hour < 12 ~ "morning",
+      hour >= 12 & hour < 18 ~ "afternoon",
+      TRUE                   ~ "evening"
+    )
+  )
+```
 
-# Daily aggregates for key predictors over full record
-daily_features <- df_full %>%
-  mutate(date = as_date(timestamp)) %>%
+```{r, include=FALSE}
+daily_target <- df_model_base %>%
   group_by(date) %>%
   summarise(
-    daily_high_temp       = max(temp, na.rm = TRUE),
-    daily_mean_temp       = mean(temp, na.rm = TRUE),
-    daily_mean_dewpoint   = mean(dewpoint_c, na.rm = TRUE),
-    daily_mean_rh         = mean(rh_pct, na.rm = TRUE),
-    daily_mean_wind_speed = mean(wind_speed_kt, na.rm = TRUE),
-    daily_max_wind_gust   = max(wind_gust_kt, na.rm = TRUE),
-    daily_mean_visibility = mean(visibility_sm, na.rm = TRUE),
-    daily_mean_altimeter  = mean(altimeter_inhg, na.rm = TRUE),
+    daily_high_temp = max(temp, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
-    across(
-      c(
-        daily_high_temp,
-        daily_mean_temp,
-        daily_mean_dewpoint,
-        daily_mean_rh,
-        daily_mean_wind_speed,
-        daily_max_wind_gust,
-        daily_mean_visibility,
-        daily_mean_altimeter
-      ),
-      ~ ifelse(is.infinite(.x), NA_real_, .x)
-    )
+    daily_high_temp = ifelse(is.infinite(daily_high_temp), NA_real_, daily_high_temp)
   ) %>%
   filter(!is.na(daily_high_temp))
-
-daily_features <- daily_features %>%
-  mutate(
-    daily_mean_temp       = ifelse(daily_mean_temp < -50 | daily_mean_temp > 60, NA_real_, daily_mean_temp),
-    daily_mean_dewpoint   = ifelse(daily_mean_dewpoint < -50 | daily_mean_dewpoint > 80, NA_real_, daily_mean_dewpoint),
-    daily_mean_rh         = ifelse(daily_mean_rh < 0 | daily_mean_rh > 110, NA_real_, daily_mean_rh),
-    daily_mean_wind_speed = ifelse(daily_mean_wind_speed < 0 | daily_mean_wind_speed > 100, NA_real_, daily_mean_wind_speed),
-    daily_max_wind_gust   = ifelse(daily_max_wind_gust < 0 | daily_max_wind_gust > 100, NA_real_, daily_max_wind_gust),
-    daily_mean_visibility = ifelse(daily_mean_visibility < 0 | daily_mean_visibility > 10, NA_real_, daily_mean_visibility),
-    daily_mean_altimeter  = ifelse(daily_mean_altimeter < 25 | daily_mean_altimeter > 32, NA_real_, daily_mean_altimeter)
-  )
-
-# Add time-based features
-daily_model <- daily_features %>%
-  mutate(
-    year = year(date),
-    doy  = yday(date),
-    month = month(date)
-  ) %>%
-  arrange(date)
 ```
 
-```{r, warning=FALSE, message=FALSE}
-# =========================================================
-# Train / Validation Split (Time-based)
-# =========================================================
+```{r, include=FALSE}
+safe_max <- function(x) {
+  if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+}
 
-# Choose a split year, e.g., train up to 2018, validate on 2019+
+safe_min <- function(x) {
+  if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+}
+
+daily_prev_features <- df_model_base %>%
+  group_by(date) %>%
+  summarise(
+    temp_mean_day = mean(temp, na.rm = TRUE),
+    temp_min_day  = safe_min(temp),
+    temp_sd_day   = sd(temp, na.rm = TRUE),
+
+    dew_mean_day  = mean(dewpoint_c, na.rm = TRUE),
+    rh_mean_day   = mean(rh_pct, na.rm = TRUE),
+
+    wind_mean_day = mean(wind_speed_kt, na.rm = TRUE),
+    gust_max_day  = safe_max(wind_gust_kt),
+
+    vis_mean_day  = mean(visibility_sm, na.rm = TRUE),
+    alt_mean_day  = mean(altimeter_inhg, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(date) %>%
+  mutate(
+    lag1_temp_mean_day = lag(temp_mean_day, 1),
+    lag1_temp_min_day  = lag(temp_min_day, 1),
+    lag1_temp_sd_day   = lag(temp_sd_day, 1),
+
+    lag1_dew_mean_day  = lag(dew_mean_day, 1),
+    lag1_rh_mean_day   = lag(rh_mean_day, 1),
+
+    lag1_wind_mean_day = lag(wind_mean_day, 1),
+    lag1_gust_max_day  = lag(gust_max_day, 1),
+
+    lag1_vis_mean_day  = lag(vis_mean_day, 1),
+    lag1_alt_mean_day  = lag(alt_mean_day, 1),
+
+    lag2_temp_mean_day = lag(temp_mean_day, 2),
+    lag3_temp_mean_day = lag(temp_mean_day, 3),
+
+    roll3_temp_mean_day = (
+      lag(temp_mean_day, 1) +
+      lag(temp_mean_day, 2) +
+      lag(temp_mean_day, 3)
+    ) / 3,
+
+    lag1_alt_change = lag(alt_mean_day, 1) - lag(alt_mean_day, 2)
+  ) %>%
+  select(
+    date,
+    starts_with("lag1_"),
+    starts_with("lag2_"),
+    starts_with("lag3_"),
+    starts_with("roll3_")
+  )
+```
+
+```{r, include=FALSE}
+safe_mean <- function(x) {
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}
+
+daily_window_features <- df_model_base %>%
+  group_by(date, tod_window) %>%
+  summarise(
+    dew_mean  = safe_mean(dewpoint_c),
+    rh_mean   = safe_mean(rh_pct),
+    wind_mean = safe_mean(wind_speed_kt),
+    gust_max  = safe_max(wind_gust_kt),
+    vis_mean  = safe_mean(visibility_sm),
+    alt_mean  = safe_mean(altimeter_inhg),
+    .groups   = "drop"
+  ) %>%
+  mutate(across(-c(date, tod_window),
+                ~ ifelse(is.infinite(.x), NA_real_, .x))) %>%
+  pivot_wider(
+    names_from  = tod_window,
+    values_from = c(dew_mean, rh_mean, wind_mean, gust_max, vis_mean, alt_mean),
+    names_glue  = "{.value}_{tod_window}"
+  )
+```
+
+```{r, include=FALSE}
+model_data <- daily_target %>%
+  left_join(daily_prev_features, by = "date") %>%
+  left_join(daily_window_features, by = "date") %>%
+  mutate(
+    year  = year(date),
+    month = month(date),
+    doy   = yday(date),
+    doy_sin = sin(2 * pi * doy / 365.25),
+    doy_cos = cos(2 * pi * doy / 365.25)
+  ) %>%
+  arrange(date) %>%
+  filter(!is.na(lag1_temp_mean_day))
+```
+
+```{r, include=FALSE}
+feature_cols <- setdiff(names(model_data), c("date", "daily_high_temp"))
+
+stopifnot(!"daily_high_temp" %in% feature_cols)
+
+glimpse(model_data[, c("date", "daily_high_temp", feature_cols[1:10])])
+
+print(feature_cols)
+```
+
+```{r, include=FALSE}
+
 split_year <- 2018
 
-train_data <- daily_model %>%
-  filter(year <= split_year)
-
-valid_data <- daily_model %>%
-  filter(year > split_year)
-
-# Feature matrix
-feature_cols <- c(
-  "doy", "month", "year",
-  "daily_mean_temp",
-  "daily_mean_dewpoint",
-  "daily_mean_rh",
-  "daily_mean_wind_speed",
-  "daily_max_wind_gust",
-  "daily_mean_visibility",
-  "daily_mean_altimeter"
-)
+train_data <- model_data %>% filter(year <= split_year)
+valid_data <- model_data %>% filter(year > split_year)
 
 X_train <- as.matrix(train_data[, feature_cols])
 y_train <- train_data$daily_high_temp
@@ -1083,67 +1132,56 @@ y_train <- train_data$daily_high_temp
 X_valid <- as.matrix(valid_data[, feature_cols])
 y_valid <- valid_data$daily_high_temp
 
-# Create DMatrix objects for XGBoost
 dtrain <- xgb.DMatrix(data = X_train, label = y_train)
 dvalid <- xgb.DMatrix(data = X_valid, label = y_valid)
-```
-
-```{r, warning=FALSE, message=FALSE}
-# =========================================================
-# Baseline XGBoost Model (Daily High Temp)
-# =========================================================
 
 params <- list(
-  objective = "reg:squarederror",  # regression
-  eta       = 0.1,                 # learning rate
-  max_depth = 6,
+  objective = "reg:squarederror",
+  eta = 0.05,
+  max_depth = 5,
   subsample = 0.8,
   colsample_bytree = 0.8,
-  nthread   = parallel::detectCores() - 1
-)
-
-nrounds <- 300
-
-watchlist <- list(
-  train = dtrain,
-  valid = dvalid
+  min_child_weight = 5,
+  nthread = parallel::detectCores() - 1
 )
 
 set.seed(42)
 
-bst_baseline <- xgb.train(
-  params        = params,
-  data          = dtrain,
-  nrounds       = nrounds,
-  watchlist     = watchlist,
-  verbose       = 1,
-  print_every_n = 25
+bst_model_1 <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 400,
+  watchlist = list(train = dtrain, valid = dvalid),
+  early_stopping_rounds = 25,
+  print_every_n = 25,
+  verbose = 1
 )
 
-# Baseline performance on validation set
-pred_valid <- predict(bst_baseline, dvalid)
-
-baseline_rmse <- sqrt(mean((pred_valid - y_valid)^2))
-baseline_mae  <- mean(abs(pred_valid - y_valid))
-
-baseline_rmse
-baseline_mae
+pred_valid <- predict(bst_model_1, dvalid)
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r, include=FALSE}
+final_rmse <- sqrt(mean((pred_valid - y_valid)^2))
+final_mae  <- mean(abs(pred_valid - y_valid))
+
+final_rmse
+final_mae
+```
+
+```{r, include=FALSE}
 # =========================================================
-# Baseline Feature Importance
+# Final Model Feature Importance
 # =========================================================
 
 importance <- xgb.importance(
-  model = bst_baseline,
+  model = bst_model_1,
   feature_names = feature_cols
 )
 
 xgb.plot.importance(importance)
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r, include=FALSE}
 # =========================================================
 # Regression Metrics on Validation Set
 # =========================================================
@@ -1190,7 +1228,7 @@ metrics <- tibble(
 print(metrics)
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r, include=FALSE}
 # =========================================================
 # Validation Diagnostics Data
 # =========================================================
@@ -1203,7 +1241,8 @@ valid_diag <- valid_data %>%
   )
 ```
 
-```{r, warning=FALSE, message=FALSE}
+
+```{r, include=FALSE}
 # =========================================================
 # Predicted vs Actual Daily Highs
 # =========================================================
@@ -1220,30 +1259,10 @@ plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
   theme_capstone
 
 plot_pred_vs_actual
-save_plot(plot_pred_vs_actual, "xgb_pred_vs_actual_valid.png")
 ```
 
-```{r, warning=FALSE, message=FALSE}
-# =========================================================
-# Residuals over Time
-# =========================================================
 
-plot_residual_time <- ggplot(valid_diag, aes(x = date, y = residual)) +
-  geom_hline(yintercept = 0, color = "grey50") +
-  geom_point(alpha = 0.4, color = "darkorange") +
-  labs(
-    title    = "Residuals over Time (Validation)",
-    subtitle = "Actual - predicted daily high (°C)",
-    x        = "Date",
-    y        = "Residual (°C)"
-  ) +
-  theme_capstone
-
-plot_residual_time
-save_plot(plot_residual_time, "xgb_residuals_time_valid.png")
-```
-
-```{r, warning=FALSE, message=FALSE}
+```{r, include=FALSE}
 # =========================================================
 # Residuals vs Actual Temperature
 # =========================================================
@@ -1260,7 +1279,366 @@ plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
   theme_capstone
 
 plot_resid_vs_actual
-save_plot(plot_resid_vs_actual, "xgb_residuals_vs_actual_valid.png")
+```
+
+#### Current Model
+
+```{r}
+# =========================================================
+# Create Time of Day Windows
+# =========================================================
+
+df_model_base <- df_all %>%
+  mutate(
+    date  = as.Date(timestamp),
+    hour  = hour(timestamp),
+    tod_window = case_when(
+      hour >= 0  & hour < 6  ~ "night",
+      hour >= 6  & hour < 11 ~ "morning",
+      TRUE                   ~ NA_character_  # everything else not used
+    )
+  )
+```
+
+```{r}
+# =========================================================
+# Daily Highs
+# =========================================================
+
+daily_target <- df_model_base %>%
+  group_by(date) %>%
+  summarise(
+    daily_high_temp = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    daily_high_temp = ifelse(is.infinite(daily_high_temp), NA_real_, daily_high_temp)
+  ) %>%
+  filter(!is.na(daily_high_temp)) %>%
+  arrange(date) %>%
+  mutate(
+    lag1_daily_high_temp = lag(daily_high_temp, 1)
+  )
+```
+
+```{r}
+# =========================================================
+# Lagged Features
+# =========================================================
+
+safe_max <- function(x) {
+  if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+}
+
+safe_min <- function(x) {
+  if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+}
+
+safe_mean <- function(x) {
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}
+
+daily_prev_features <- df_model_base %>%
+  group_by(date) %>%
+  summarise(
+    temp_mean_day = safe_mean(temp),
+    temp_min_day  = safe_min(temp),
+    temp_sd_day   = sd(temp, na.rm = TRUE),
+    dew_mean_day  = safe_mean(dewpoint_c),
+    rh_mean_day   = safe_mean(rh_pct),
+    wind_mean_day = safe_mean(wind_speed_kt),
+    gust_max_day  = safe_max(wind_gust_kt),
+    vis_mean_day  = safe_mean(visibility_sm),
+    alt_mean_day  = safe_mean(altimeter_inhg),
+    .groups = "drop"
+  ) %>%
+  arrange(date) %>%
+  mutate(
+    lag1_temp_mean_day = lag(temp_mean_day, 1),
+    lag1_temp_min_day  = lag(temp_min_day, 1),
+    lag1_temp_sd_day   = lag(temp_sd_day, 1),
+    lag1_dew_mean_day  = lag(dew_mean_day, 1),
+    lag1_rh_mean_day   = lag(rh_mean_day, 1),
+    lag1_wind_mean_day = lag(wind_mean_day, 1),
+    lag1_gust_max_day  = lag(gust_max_day, 1),
+    lag1_vis_mean_day  = lag(vis_mean_day, 1),
+    lag1_alt_mean_day  = lag(alt_mean_day, 1),
+    lag1_alt_change    = lag(alt_mean_day, 1) - lag(alt_mean_day, 2)
+  ) %>%
+  select(date, starts_with("lag1_"))
+```
+
+```{r}
+# =========================================================
+# Additional Features
+# =========================================================
+
+daily_window_features <- df_model_base %>%
+  group_by(date, tod_window) %>%
+  summarise(
+    temp_mean = safe_mean(temp),           
+    dew_mean  = safe_mean(dewpoint_c),
+    rh_mean   = safe_mean(rh_pct),
+    rh_min    = safe_min(rh_pct),
+    rh_max    = safe_max(rh_pct),
+    wind_mean = safe_mean(wind_speed_kt),
+    gust_max  = safe_max(wind_gust_kt),
+    vis_mean  = safe_mean(visibility_sm),
+    alt_mean  = safe_mean(altimeter_inhg),
+    .groups   = "drop"
+  ) %>%
+  mutate(
+    across(
+      -c(date, tod_window),
+      ~ ifelse(is.infinite(.x), NA_real_, .x)
+    )
+  ) %>%
+  pivot_wider(
+    names_from  = tod_window,
+    values_from = c(
+      temp_mean,
+      dew_mean, rh_mean, rh_min, rh_max,
+      wind_mean, gust_max, vis_mean, alt_mean
+    ),
+    names_glue  = "{.value}_{tod_window}"
+  ) %>%
+  select(!ends_with("_NA")) %>%
+  mutate(
+    rh_range_night_morning   = rh_max_morning   - rh_min_night,
+    temp_range_night_morning = temp_mean_morning - temp_mean_night,
+    wind_change_night_morning = wind_mean_morning - wind_mean_night,
+    alt_change_night_morning  = alt_mean_morning  - alt_mean_night
+  )
+```
+
+```{r}
+# =========================================================
+# Prepare Model Data
+# =========================================================
+
+model_data <- daily_target %>%
+  left_join(daily_prev_features,   by = "date") %>%
+  left_join(daily_window_features, by = "date") %>%
+  mutate(
+    year  = year(date),
+    month = month(date),
+    doy   = yday(date),
+    doy2 = doy^2,
+    doy_sin = sin(2 * pi * doy / 365.25),
+    doy_cos = cos(2 * pi * doy / 365.25),
+    season = case_when(
+      month %in% c(12, 1, 2) ~ "winter",
+      month %in% c(3, 4, 5)  ~ "spring",
+      month %in% c(6, 7, 8)  ~ "summer",
+      TRUE                   ~ "fall"
+    )
+  ) %>%
+  arrange(date) %>%
+  filter(
+    !is.na(lag1_temp_mean_day),
+    !is.na(lag1_daily_high_temp)
+  ) %>%
+  mutate(
+    season = factor(season, levels = c("winter", "spring", "summer", "fall"))
+  )
+
+# Create season dummies (winter, spring, summer, fall)
+season_dummies <- model.matrix(~ season - 1, data = model_data)
+
+model_data <- bind_cols(
+  model_data,
+  as_tibble(season_dummies)
+)
+```
+
+```{r, results='hide'}
+# =========================================================
+# Check Features
+# =========================================================
+
+feature_cols <- model_data %>%
+  select(-date, -daily_high_temp, -month, -season) %>%  # drop date, target, raw month, factor
+  select(where(is.numeric)) %>%                         # keep only numeric columns
+  names()
+
+stopifnot(!"daily_high_temp" %in% feature_cols)
+print(feature_cols)
+```
+
+```{r, results='hide'}
+# =========================================================
+# Model Training
+# =========================================================
+
+split_year <- 2018
+
+train_data <- model_data %>% filter(year <= split_year)
+valid_data <- model_data %>% filter(year > split_year)
+
+X_train <- as.matrix(train_data[, feature_cols])
+y_train <- train_data$daily_high_temp
+
+X_valid <- as.matrix(valid_data[, feature_cols])
+y_valid <- valid_data$daily_high_temp
+
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dvalid <- xgb.DMatrix(data = X_valid, label = y_valid)
+
+set.seed(42)
+
+params <- list(
+  objective = "reg:squarederror",
+  eta = 0.03,           
+  max_depth = 6,        
+  subsample = 0.8,
+  colsample_bytree = 0.8,
+  min_child_weight = 5,
+  nthread = parallel::detectCores() - 1
+)
+
+bst_model_2 <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 800,
+  evals = list(train = dtrain, valid = dvalid),
+  early_stopping_rounds = 50,
+  print_every_n = 50,
+  verbose = 1
+)
+
+pred_valid <- predict(bst_model_2, dvalid)
+```
+
+```{r}
+# =========================================================
+# Initial RMSE and MAE Check
+# =========================================================
+
+final_rmse <- sqrt(mean((pred_valid - y_valid)^2))
+final_mae  <- mean(abs(pred_valid - y_valid))
+
+final_rmse
+final_mae
+```
+
+```{r}
+# =========================================================
+# Final Model Feature Importance
+# =========================================================
+
+importance <- xgb.importance(
+  model = bst_model_2,
+  feature_names = feature_cols
+)
+
+xgb.plot.importance(importance)
+
+# View the top 20 most important features as a tibble
+importance_tbl <- as_tibble(importance) %>%
+  arrange(desc(Gain)) %>%      # or desc(Importance) depending on version
+  slice(1:20)
+
+print(importance_tbl)
+```
+
+```{r}
+# =========================================================
+# Regression Metrics on Validation Set
+# =========================================================
+
+# Ensure numeric vectors
+y_actual <- as.numeric(y_valid)
+y_pred   <- as.numeric(pred_valid)
+
+# Residuals
+residuals <- y_actual - y_pred
+
+# MAE: Mean Absolute Error
+mae <- mean(abs(residuals), na.rm = TRUE)
+
+# MSE: Mean Squared Error
+mse <- mean(residuals^2, na.rm = TRUE)
+
+# RMSE: Root Mean Squared Error
+rmse <- sqrt(mse)
+
+# R^2: Coefficient of determination
+ss_res <- sum(residuals^2, na.rm = TRUE)
+ss_tot <- sum((y_actual - mean(y_actual, na.rm = TRUE))^2, na.rm = TRUE)
+r_squared <- 1 - ss_res / ss_tot
+
+# MAPE: Mean Absolute Percentage Error
+nonzero_idx <- which(y_actual != 0 & !is.na(y_actual) & !is.na(y_pred))
+mape <- mean(
+  abs((y_actual[nonzero_idx] - y_pred[nonzero_idx]) / y_actual[nonzero_idx]) * 100,
+  na.rm = TRUE
+)
+
+# Explained variance score
+var_actual <- var(y_actual, na.rm = TRUE)
+var_res    <- var(residuals, na.rm = TRUE)
+explained_variance <- 1 - var_res / var_actual
+
+
+metrics <- tibble(
+  Metric = c("MAE", "MSE", "RMSE", "R_squared", "MAPE_percent", "Explained_variance"),
+  Value  = c(mae, mse, rmse, r_squared, mape, explained_variance)
+)
+
+print(metrics)
+```
+
+```{r}
+# =========================================================
+# Validation Diagnostics Data
+# =========================================================
+
+valid_diag <- valid_data %>%
+  mutate(
+    actual_high = as.numeric(y_valid),
+    pred_high   = as.numeric(pred_valid),
+    residual    = actual_high - pred_high
+  )
+```
+
+
+```{r}
+# =========================================================
+# Predicted vs Actual Daily Highs
+# =========================================================
+
+plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
+  geom_point(alpha = 0.4, color = "steelblue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(
+    title    = "Predicted vs Actual Daily High Temperature",
+    subtitle = "Validation period (> 2018)",
+    x        = "Predicted daily high (°C)",
+    y        = "Actual daily high (°C)"
+  ) +
+  theme_capstone
+
+plot_pred_vs_actual
+```
+
+
+```{r}
+# =========================================================
+# Residuals vs Actual Temperature
+# =========================================================
+
+plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
+  geom_hline(yintercept = 0, color = "grey50") +
+  geom_point(alpha = 0.4, color = "seagreen") +
+  labs(
+    title    = "Residuals vs Actual Daily High (Validation)",
+    subtitle = "Check error structure across temperature range",
+    x        = "Actual daily high (°C)",
+    y        = "Residual (°C)"
+  ) +
+  theme_capstone
+
+plot_resid_vs_actual
 ```
 
 
