@@ -978,11 +978,11 @@ Taken together, the data exploration stage not only describes the structure of t
 
 To prepare the model for training and testing, we begin with the original dataset that consists of 5‑minute ASOS observations at KLAX from 2000–2026, including temperature, dewpoint, humidity, winds, visibility, and altimeter pressure.
 The timestamps are set to UTC to ensure a standardized timezone for all modeling and evaluations.
-The variables are also arranged chronologically using the timestamps to ensure the maintain the temporal structure.
+The variables are also arranged chronologically using the timestamps to ensure they maintain the temporal structure.
 
 A few variables had identifiable erroneous sensor values. 
-For visibility, the max value was capped at 10 statue miles.
-Wind gusts were above 100 kt were dropped.
+For visibility, the max value was capped at 10 statute miles as this is the limit for the sensors.
+Wind gusts were above 100 kt were dropped under the assumption that gusts above 100 kt could be considered unrealistic.
 Finally, any non-finite values within variables were converted to missing rather than using imputation as XGBoost is capable of handling such cases.
 To obtain the target variable of the daily high temperatures, the 5-minute temperatures were grouped by the date and taking the maximum.
 This preprocessed dataset allowed us to derive our features and target while maintaining realistic outliers for the model to see.
@@ -990,24 +990,23 @@ This preprocessed dataset allowed us to derive our features and target while mai
 #### Feature Engineering
 
 For the task of predicting daily high temperatures, we include the lagged variables to capture persistence from one day to the next.
-Of these laggeed features, a number of summary statistic features were constructed.
-For temperature, the daily high of the previous day is used along side the mean, minimum, and standard deviation.
+Of these lagged features, a number of summary statistic features were constructed.
+For temperature, the daily high of the previous day is used alongside the mean, minimum, and standard deviation.
 The mean for dewpoint, humidity, wind speed, visibility, and altimeter are also created.
 Finally, maximum wind gusts are also included.
 
-Since the goal is to predict the high of day given shorter time frame data, we also use same day observations up until the cutoff of 11:00 UTC of the current day. 
-This prevents any leakage from observations that might be directly associated from the current day's high as on average, the high of day occurs some time around 12:00 UTC as identified in @fig-diurnal-cycle.
+Since the goal is to predict the high of day given shorter time frame data, we also use same day observations up until the cutoff of 11:00 UTC of the same day. 
+This prevents any leakage from observations that might be directly associated with the same day's high, since, on average, the high of day occurs approximately around 12:00 UTC as identified in @fig-diurnal-cycle.
 This allows for the use of more up-to-date observations, better simulating a use case of forecasting using readily available data up to an hour out from the expected time of the observation.
 
 Furthermore, windows are created for the 5-minute series for "night", 0-6 UTC, and "morning", 6-11 UTC.
-Within these windows, new statical features are created once again.
+Within these windows, new statistical features are created once again.
 These features include the mean dewpoint, mean and range of relative humidity, mean wind speed, maximum gusts, visibility, and altimeter pressure. 
-Simple contrasts of the differences between morning and night for temperature, humidity, wind, and pressure are also created.
-These contrasts are calculated to capture information that could come from how much of a change has occurred in these variables from night into late morning.
+The simple differences between morning and night in temperature, humidity, wind, and pressure are used as features to describe how the atmosphere changes from night into late morning.
 
 To include calendar-based features, year, month, day of year, and polynomial terms for day of year were derived.
-More over, to capture seasonality, sinusoidal transformations were calculate to represent annual seasonality smoothly.
-Finally, the season based on the month was encoded as winter, spring, summer, and fall, with dummy variables to allow XGBoost to interact seasonal effects with the other meteorological features.
+Moreover, to capture seasonality, sinusoidal transformations were calculated to represent annual seasonality smoothly.
+Finally, the season based on month was encoded as winter, spring, summer, and fall, with dummy variables to allow XGBoost to interact seasonal effects with the other meteorological features.
 
 
 ```{r}
@@ -1202,7 +1201,7 @@ The XGBoost model is constructed with the following hyperparameters:
 | Number of Rounds              | `800`               |
 | Early Stopping                | `50`                |
 
-- Early stopping based on the validation performance is utilized to prevent overfitting and reduce the overall ensamble size.
+- Early stopping based on the validation performance is utilized to prevent overfitting and reduce the overall ensemble size.
 
 ```{r, results='hide'}
 # =========================================================
@@ -1307,7 +1306,7 @@ knitr::kable(
 
 - **MAE:** On average, the model’s predictions are off by about 0.87 °C. This means the model’s daily high forecast is typically within roughly 0.87 °C of the actual daily high temperature.
 
-- **MSE:** The average squared error is 1.609 °C², which indicates that large mistakes are rare. In practice, this suggests the model rarely produces daily high temperature forecasts that are abnormally higher or lower than the observed high for a given day.
+- **MSE:** The average squared error is 1.609 °C². In practice, this suggests the model rarely produces daily high temperature forecasts that are abnormally higher or lower than the observed high for a given day.
 
 - **RMSE:** The typical prediction error is about 1.27 °C. For example, if the actual daily high temperature is 22 °C, the model will usually predict a daily high between about 20.73 °C and 23.27 °C.
 
@@ -1317,7 +1316,7 @@ knitr::kable(
 
 - **Explained Variance:** About 90.4% of the observed variation in temperature is accounted for by the model, reinforcing that it represents real‑world fluctuations well.
 
-@tbl-ft-importance and @fig-ft-imprt below display the ten most influential predictors in the XGBoost model, ranked by gain, which reflects each feature’s contribution to reducing prediction error
+@tbl-ft-importance and @fig-ft-imprt below display the ten most influential predictors in the XGBoost model, ranked by gain, which reflects each feature’s contribution to reducing prediction error.
 
 
 ```{r}
@@ -1411,7 +1410,11 @@ plot_pred_vs_actual
 save_plot(plot_pred_vs_actual, "plot_pred_vs_actual.png")
 ```
 
-@fig-predicted-vs-actual
+@fig-predicted-vs-actual provides a visual comparison of the predicted versus the actual daily high temperatures from 2019-2026.
+The dashed line represents a perfect model with exact predictions.
+Overall, the points are closely aligned with the dashed line visually supports the $R^2$ of 0.904 previously discussed.
+Most points appear to be clustered in mid-range temperatures, with a decently tight spread.
+In the more extreme higher and lower range temperatures, there appears to be a wider spread, indicating that both unusually hot and cold days are more difficult to predict.
 
 ```{r}
 #| label: fig-resid-vs-actual
@@ -1434,7 +1437,10 @@ plot_resid_vs_actual
 save_plot(plot_resid_vs_actual, "plot_resid_vs_actual.png")
 ```
 
-@fig-resid-vs-actual
+@fig-resid-vs-actual shows residuals, prediction error in °C, against the observed daily high temperature on the validation set, allowing you to check whether errors depend on the actual daily high temperature.
+From roughly 15 °C to 30 °C, the residuals are centered close to zero with a fairly symmetric spread.
+Much like @fig-predicted-vs-actual, at the more extreme temperatures, the spread widens confirming that unusually hot and cold days are more difficult to predict.
+
 
 ### Conclusion
 
