@@ -1,7 +1,10 @@
 ---
-title: "Present a great story for data science projects"
-subtitle: "This is a Slide Template"
-author: "Students names (Advisor: Dr. Cohen)"
+title: "Predicting Daily High Temperature Using XGBoost - Summer 2026 "
+subtitle: "Los Angeles International Airport (KLAX)"
+author: 
+  - name: "Alex Lewis"
+  - name: "David Moe"
+  - name: "Advisor: Dr. Cohen"
 date: '`r Sys.Date()`'
 format:
   revealjs
@@ -41,9 +44,19 @@ More information about `revealjs`:
 
 -   Provide an overview of your approach.
 
-In kernel estimator, weight function is known as kernel function
-[@efr2008]. Cite this paper [@bro2014principal]. The GEE [@wang2014].
-The PCA [@daffertshofer2004pca]\*
+
+## Introduction {.smaller}
+
+-   Predict daily high temperature at KLAX
+
+-   Relevant to aviation and local operations
+
+-   Site-specific forecasting is still difficult
+
+-   NOAA ASOS provides high-frequency weather data at 5-minute intervals
+
+-   XGBoost captures nonlinear weather relationships
+
 
 ## Methods
 
@@ -52,6 +65,32 @@ The PCA [@daffertshofer2004pca]\*
 -   Justify your choices based on the problem and data.
 
 
+## Methods
+
+-   Target: daily high temperature at KLAX
+
+-   Model: XGBoost regression trees
+
+-   Captures nonlinear predictor interactions
+
+-   Handles missing weather observations
+
+-   Feature importance aids interpretation
+
+
+## Methods Continued
+
+-   Prediction = sum of boosted trees
+
+$$
+\hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F} \tag{1}
+$$
+
+-   Objective = fit + regularization
+
+$$
+\mathcal{L} = \sum_{i} l(\hat{y}_i, y_i) + \sum_{k=1}^{K} \left[ \gamma T_k + \tfrac{1}{2}\lambda \lVert w_k \rVert^2 \right] \tag{2}
+$$
 
 ## Data Exploration and Visualization
 

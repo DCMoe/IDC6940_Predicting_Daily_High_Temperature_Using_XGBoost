@@ -47,7 +47,7 @@ An XGBoost regression model is developed to model the relationship between meteo
 This approach provides a practical framework for applying machine learning techniques to site-specific temperature forecasting using publicly available data.
 
 The primary objective of this study is to develop and evaluate an XGBoost-based model for predicting daily high temperatures at the KLAX airport in Los Angeles, California using the aggregated NOAA ASOS data. 
-The model performance is assessed using a comprehensive set of regression evaluation metrics, including MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
+The model performance is assessed using a comprehensive set of regression evaluation metrics, including Mean Absolute Error (MAE), Mean Squared Error (MSE), Root Mean Squared Error (RMSE), $R^2$, Mean Absolute Percentage Error (MAPE), and Explained Variance, to provide a thorough assessment of prediction accuracy, error magnitude, and model fit. 
 In addition, the study examines feature importance to better understand the contribution of key meteorological variables to model predictions. 
 By focusing on a single location, KLAX, and leveraging high-frequency data, this research aims to demonstrate the applicability of XGBoost for localized temperature forecasting. 
 The findings contribute to the growing body of work on data-driven weather prediction and highlight the potential of XGBoost as a practical tool for operational forecasting tasks, consistent with prior statistical temperature prediction work in California and broader North America [@dias2018statistical].
@@ -89,7 +89,7 @@ The temperature data used in this study were obtained from the National Oceanic 
 ASOS is the primary automated surface observing network in the United States and provides continuous meteorological observations at airport-based stations, including Los Angeles International Airport (KLAX), with archived one-minute and five-minute products available through NCEI. 
 The dataset used in this study consists of 5-minute interval observations for KLAX from January 1, 2000 through June 7, 2026 and includes variables as described in the following table:
 
-| Feature Name        | Feature           | Description                                                                       |
+| Variable Name        | Variable           | Description                                                                       |
 | ------------------- | ----------------  | --------------------------------------------------------------------------------- |
 | Timestamp           | `datetime_utc`    | Date and time of the observation in Coordinated Universal Time (UTC).               |
 | Wind Direction      | `wind_dir`        | Direction the wind is coming from, usually reported in degrees.                     |
@@ -603,7 +603,9 @@ save_plot(p_boxplot, "fig_boxplot.png")
 ```
 
 @fig-daily-high-ranges shows the same distributional and seasonal patterns at the daily resolution, with mean daily highs climbing steadily from February into late summer, peaking in early September, and then declining through autumn into December. 
-Much like @fig-monthly-boxplot, the shaded band (interquartile range) and dashed lines (minimum and maximum) highlight a wider spread between the daily minimum and maximum during the cooler winter season. This pattern indicates that although average highs are greater in late summer, individual winter days exhibit larger variability and more frequent extremes than days in the warmer months.
+Much like @fig-monthly-boxplot, the shaded band (interquartile range) and dashed lines (minimum and maximum) highlight a wider spread between the daily minimum and maximum during the cooler winter season. 
+This pattern indicates that although median high temperatures are greater in late summer, individual winter days exhibit larger variability. 
+Individual days in the warmer months, however, still exhibit more frequent extremes than days in the warmer months.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-ranges
@@ -972,316 +974,41 @@ Taken together, the data exploration stage not only describes the structure of t
 
 ### Modeling and Results
 
--   Explain your data preprocessing and cleaning steps.
+#### Data Preprocessing
 
--   Present your key findings in a clear and concise manner.
+To prepare the model for training and testing, we begin with the original dataset that consists of 5‑minute ASOS observations at KLAX from 2000–2026, including temperature, dewpoint, humidity, winds, visibility, and altimeter pressure.
+The timestamps are set to UTC to ensure a standardized timezone for all modeling and evaluations.
+The variables are also arranged chronologically using the timestamps to ensure the maintain the temporal structure.
 
--   Use visuals to support your claims.
+A few variables had identifiable erroneous sensor values. 
+For visibility, the max value was capped at 10 statue miles.
+Wind gusts were above 100 kt were dropped.
+Finally, any non-finite values within variables were converted to missing rather than using imputation as XGBoost is capable of handling such cases.
+To obtain the target variable of the daily high temperatures, the 5-minute temperatures were grouped by the date and taking the maximum.
+This preprocessed dataset allowed us to derive our features and target while maintaining realistic outliers for the model to see.
 
--   **Tell a story about what the data reveals.**
+#### Feature Engineering
 
-```{r, include=FALSE}
+For the task of predicting daily high temperatures, we include the lagged variables to capture persistence from one day to the next.
+Of these laggeed features, a number of summary statistic features were constructed.
+For temperature, the daily high of the previous day is used along side the mean, minimum, and standard deviation.
+The mean for dewpoint, humidity, wind speed, visibility, and altimeter are also created.
+Finally, maximum wind gusts are also included.
 
-df_model_base <- df_all %>%
-  mutate(
-    date      = as.Date(timestamp),
-    hour      = hour(timestamp),
-    tod_window = case_when(
-      hour >= 0  & hour < 6  ~ "night",
-      hour >= 6  & hour < 12 ~ "morning",
-      hour >= 12 & hour < 18 ~ "afternoon",
-      TRUE                   ~ "evening"
-    )
-  )
-```
+Since the goal is to predict the high of day given shorter time frame data, we also use same day observations up until the cutoff of 11:00 UTC of the current day. 
+This prevents any leakage from observations that might be directly associated from the current day's high as on average, the high of day occurs some time around 12:00 UTC as identified in @fig-diurnal-cycle.
+This allows for the use of more up-to-date observations, better simulating a use case of forecasting using readily available data up to an hour out from the expected time of the observation.
 
-```{r, include=FALSE}
-daily_target <- df_model_base %>%
-  group_by(date) %>%
-  summarise(
-    daily_high_temp = max(temp, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    daily_high_temp = ifelse(is.infinite(daily_high_temp), NA_real_, daily_high_temp)
-  ) %>%
-  filter(!is.na(daily_high_temp))
-```
+Furthermore, windows are created for the 5-minute series for "night", 0-6 UTC, and "morning", 6-11 UTC.
+Within these windows, new statical features are created once again.
+These features include the mean dewpoint, mean and range of relative humidity, mean wind speed, maximum gusts, visibility, and altimeter pressure. 
+Simple contrasts of the differences between morning and night for temperature, humidity, wind, and pressure are also created.
+These contrasts are calculated to capture information that could come from how much of a change has occurred in these variables from night into late morning.
 
-```{r, include=FALSE}
-safe_max <- function(x) {
-  if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
-}
+To include calendar-based features, year, month, day of year, and polynomial terms for day of year were derived.
+More over, to capture seasonality, sinusoidal transformations were calculate to represent annual seasonality smoothly.
+Finally, the season based on the month was encoded as winter, spring, summer, and fall, with dummy variables to allow XGBoost to interact seasonal effects with the other meteorological features.
 
-safe_min <- function(x) {
-  if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
-}
-
-daily_prev_features <- df_model_base %>%
-  group_by(date) %>%
-  summarise(
-    temp_mean_day = mean(temp, na.rm = TRUE),
-    temp_min_day  = safe_min(temp),
-    temp_sd_day   = sd(temp, na.rm = TRUE),
-
-    dew_mean_day  = mean(dewpoint_c, na.rm = TRUE),
-    rh_mean_day   = mean(rh_pct, na.rm = TRUE),
-
-    wind_mean_day = mean(wind_speed_kt, na.rm = TRUE),
-    gust_max_day  = safe_max(wind_gust_kt),
-
-    vis_mean_day  = mean(visibility_sm, na.rm = TRUE),
-    alt_mean_day  = mean(altimeter_inhg, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  arrange(date) %>%
-  mutate(
-    lag1_temp_mean_day = lag(temp_mean_day, 1),
-    lag1_temp_min_day  = lag(temp_min_day, 1),
-    lag1_temp_sd_day   = lag(temp_sd_day, 1),
-
-    lag1_dew_mean_day  = lag(dew_mean_day, 1),
-    lag1_rh_mean_day   = lag(rh_mean_day, 1),
-
-    lag1_wind_mean_day = lag(wind_mean_day, 1),
-    lag1_gust_max_day  = lag(gust_max_day, 1),
-
-    lag1_vis_mean_day  = lag(vis_mean_day, 1),
-    lag1_alt_mean_day  = lag(alt_mean_day, 1),
-
-    lag2_temp_mean_day = lag(temp_mean_day, 2),
-    lag3_temp_mean_day = lag(temp_mean_day, 3),
-
-    roll3_temp_mean_day = (
-      lag(temp_mean_day, 1) +
-      lag(temp_mean_day, 2) +
-      lag(temp_mean_day, 3)
-    ) / 3,
-
-    lag1_alt_change = lag(alt_mean_day, 1) - lag(alt_mean_day, 2)
-  ) %>%
-  select(
-    date,
-    starts_with("lag1_"),
-    starts_with("lag2_"),
-    starts_with("lag3_"),
-    starts_with("roll3_")
-  )
-```
-
-```{r, include=FALSE}
-safe_mean <- function(x) {
-  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
-}
-
-daily_window_features <- df_model_base %>%
-  group_by(date, tod_window) %>%
-  summarise(
-    dew_mean  = safe_mean(dewpoint_c),
-    rh_mean   = safe_mean(rh_pct),
-    wind_mean = safe_mean(wind_speed_kt),
-    gust_max  = safe_max(wind_gust_kt),
-    vis_mean  = safe_mean(visibility_sm),
-    alt_mean  = safe_mean(altimeter_inhg),
-    .groups   = "drop"
-  ) %>%
-  mutate(across(-c(date, tod_window),
-                ~ ifelse(is.infinite(.x), NA_real_, .x))) %>%
-  pivot_wider(
-    names_from  = tod_window,
-    values_from = c(dew_mean, rh_mean, wind_mean, gust_max, vis_mean, alt_mean),
-    names_glue  = "{.value}_{tod_window}"
-  )
-```
-
-```{r, include=FALSE}
-model_data <- daily_target %>%
-  left_join(daily_prev_features, by = "date") %>%
-  left_join(daily_window_features, by = "date") %>%
-  mutate(
-    year  = year(date),
-    month = month(date),
-    doy   = yday(date),
-    doy_sin = sin(2 * pi * doy / 365.25),
-    doy_cos = cos(2 * pi * doy / 365.25)
-  ) %>%
-  arrange(date) %>%
-  filter(!is.na(lag1_temp_mean_day))
-```
-
-```{r, include=FALSE}
-feature_cols <- setdiff(names(model_data), c("date", "daily_high_temp"))
-
-stopifnot(!"daily_high_temp" %in% feature_cols)
-
-glimpse(model_data[, c("date", "daily_high_temp", feature_cols[1:10])])
-
-print(feature_cols)
-```
-
-```{r, include=FALSE}
-
-split_year <- 2018
-
-train_data <- model_data %>% filter(year <= split_year)
-valid_data <- model_data %>% filter(year > split_year)
-
-X_train <- as.matrix(train_data[, feature_cols])
-y_train <- train_data$daily_high_temp
-
-X_valid <- as.matrix(valid_data[, feature_cols])
-y_valid <- valid_data$daily_high_temp
-
-dtrain <- xgb.DMatrix(data = X_train, label = y_train)
-dvalid <- xgb.DMatrix(data = X_valid, label = y_valid)
-
-params <- list(
-  objective = "reg:squarederror",
-  eta = 0.05,
-  max_depth = 5,
-  subsample = 0.8,
-  colsample_bytree = 0.8,
-  min_child_weight = 5,
-  nthread = parallel::detectCores() - 1
-)
-
-set.seed(42)
-
-bst_model_1 <- xgb.train(
-  params = params,
-  data = dtrain,
-  nrounds = 400,
-  watchlist = list(train = dtrain, valid = dvalid),
-  early_stopping_rounds = 25,
-  print_every_n = 25,
-  verbose = 1
-)
-
-pred_valid <- predict(bst_model_1, dvalid)
-```
-
-```{r, include=FALSE}
-final_rmse <- sqrt(mean((pred_valid - y_valid)^2))
-final_mae  <- mean(abs(pred_valid - y_valid))
-
-final_rmse
-final_mae
-```
-
-```{r, include=FALSE}
-# =========================================================
-# Final Model Feature Importance
-# =========================================================
-
-importance <- xgb.importance(
-  model = bst_model_1,
-  feature_names = feature_cols
-)
-
-xgb.plot.importance(importance)
-```
-
-```{r, include=FALSE}
-# =========================================================
-# Regression Metrics on Validation Set
-# =========================================================
-
-# Ensure numeric vectors
-y_actual <- as.numeric(y_valid)
-y_pred   <- as.numeric(pred_valid)
-
-# Residuals
-residuals <- y_actual - y_pred
-
-# MAE: Mean Absolute Error
-mae <- mean(abs(residuals), na.rm = TRUE)
-
-# MSE: Mean Squared Error
-mse <- mean(residuals^2, na.rm = TRUE)
-
-# RMSE: Root Mean Squared Error
-rmse <- sqrt(mse)
-
-# R^2: Coefficient of determination
-ss_res <- sum(residuals^2, na.rm = TRUE)
-ss_tot <- sum((y_actual - mean(y_actual, na.rm = TRUE))^2, na.rm = TRUE)
-r_squared <- 1 - ss_res / ss_tot
-
-# MAPE: Mean Absolute Percentage Error
-nonzero_idx <- which(y_actual != 0 & !is.na(y_actual) & !is.na(y_pred))
-mape <- mean(
-  abs((y_actual[nonzero_idx] - y_pred[nonzero_idx]) / y_actual[nonzero_idx]) * 100,
-  na.rm = TRUE
-)
-
-# Explained variance score
-var_actual <- var(y_actual, na.rm = TRUE)
-var_res    <- var(residuals, na.rm = TRUE)
-explained_variance <- 1 - var_res / var_actual
-
-
-metrics <- tibble(
-  Metric = c("MAE", "MSE", "RMSE", "R_squared", "MAPE_percent", "Explained_variance"),
-  Value  = c(mae, mse, rmse, r_squared, mape, explained_variance)
-)
-
-print(metrics)
-```
-
-```{r, include=FALSE}
-# =========================================================
-# Validation Diagnostics Data
-# =========================================================
-
-valid_diag <- valid_data %>%
-  mutate(
-    actual_high = as.numeric(y_valid),
-    pred_high   = as.numeric(pred_valid),
-    residual    = actual_high - pred_high
-  )
-```
-
-
-```{r, include=FALSE}
-# =========================================================
-# Predicted vs Actual Daily Highs
-# =========================================================
-
-plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
-  geom_point(alpha = 0.4, color = "steelblue") +
-  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
-  labs(
-    title    = "Predicted vs Actual Daily High Temperature",
-    subtitle = "Validation period (year > split_year)",
-    x        = "Predicted daily high (°C)",
-    y        = "Actual daily high (°C)"
-  ) +
-  theme_capstone
-
-plot_pred_vs_actual
-```
-
-
-```{r, include=FALSE}
-# =========================================================
-# Residuals vs Actual Temperature
-# =========================================================
-
-plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
-  geom_hline(yintercept = 0, color = "grey50") +
-  geom_point(alpha = 0.4, color = "seagreen") +
-  labs(
-    title    = "Residuals vs Actual Daily High (Validation)",
-    subtitle = "Check error structure across temperature range",
-    x        = "Actual daily high (°C)",
-    y        = "Residual (°C)"
-  ) +
-  theme_capstone
-
-plot_resid_vs_actual
-```
-
-#### Current Model
 
 ```{r}
 # =========================================================
@@ -1298,9 +1025,7 @@ df_model_base <- df_all %>%
       TRUE                   ~ NA_character_  # everything else not used
     )
   )
-```
 
-```{r}
 # =========================================================
 # Daily Highs
 # =========================================================
@@ -1319,9 +1044,7 @@ daily_target <- df_model_base %>%
   mutate(
     lag1_daily_high_temp = lag(daily_high_temp, 1)
   )
-```
 
-```{r}
 # =========================================================
 # Lagged Features
 # =========================================================
@@ -1366,9 +1089,7 @@ daily_prev_features <- df_model_base %>%
     lag1_alt_change    = lag(alt_mean_day, 1) - lag(alt_mean_day, 2)
   ) %>%
   select(date, starts_with("lag1_"))
-```
 
-```{r}
 # =========================================================
 # Additional Features
 # =========================================================
@@ -1409,9 +1130,7 @@ daily_window_features <- df_model_base %>%
     wind_change_night_morning = wind_mean_morning - wind_mean_night,
     alt_change_night_morning  = alt_mean_morning  - alt_mean_night
   )
-```
 
-```{r}
 # =========================================================
 # Prepare Model Data
 # =========================================================
@@ -1449,21 +1168,41 @@ model_data <- bind_cols(
   model_data,
   as_tibble(season_dummies)
 )
-```
 
-```{r, results='hide'}
 # =========================================================
 # Check Features
 # =========================================================
 
 feature_cols <- model_data %>%
-  select(-date, -daily_high_temp, -month, -season) %>%  # drop date, target, raw month, factor
-  select(where(is.numeric)) %>%                         # keep only numeric columns
+  select(-date, -daily_high_temp, -month, -season) %>%
+  select(where(is.numeric)) %>%                         
   names()
 
 stopifnot(!"daily_high_temp" %in% feature_cols)
-print(feature_cols)
 ```
+
+#### XGBoost Model
+
+Now that the dataset has been preprocessed and the new features created, we prepare for the training and testing of the XGBoost model.
+There are a total 9,336 observations.
+The data is split into a train split which is used exclusively for training the model, and a test split which is reserved exclusively for validation of the model and is not used in training.
+The train split consists of all observations from 2000-2018, for a total of 6,800 observations, or 72.84%.
+The test split contains all observations from 2019-2026, for a total of 2,536 observations, or 27.16%. 
+
+As previously mentioned, and XGBoost regression model is chosen for it's ability to handle non-linear relationships and interactions between meteorological variables, along with the ability to handle missing data without the need for imputation.
+The XGBoost model is constructed with the following hyperparameters:
+
+| Hyperparameter                | Value               |
+| -------------------           | ----------------    |
+| Objective Function            | `Squared Error`     |
+| Learning Rate                 | `0.03`              |
+| Subsample of Rows             | `0.8`               |
+| Subsample of Columns          | `0.8`               |
+| Minimum Child Weight          | `5`                 |
+| Number of Rounds              | `800`               |
+| Early Stopping                | `50`                |
+
+- Early stopping based on the validation performance is utilized to prevent overfitting and reduce the overall ensamble size.
 
 ```{r, results='hide'}
 # =========================================================
@@ -1496,7 +1235,7 @@ params <- list(
   nthread = parallel::detectCores() - 1
 )
 
-bst_model_2 <- xgb.train(
+model <- xgb.train(
   params = params,
   data = dtrain,
   nrounds = 800,
@@ -1506,42 +1245,14 @@ bst_model_2 <- xgb.train(
   verbose = 1
 )
 
-pred_valid <- predict(bst_model_2, dvalid)
+pred_valid <- predict(model, dvalid)
 ```
 
-```{r}
-# =========================================================
-# Initial RMSE and MAE Check
-# =========================================================
-
-final_rmse <- sqrt(mean((pred_valid - y_valid)^2))
-final_mae  <- mean(abs(pred_valid - y_valid))
-
-final_rmse
-final_mae
-```
+After training the model, it is then tested on the test split data. 
+@tbl-model-results below provides the results of the XGBoost model performance as measured by MAE, MSE, RMSE, $R^2$, MAPE, and Explained Variance.
 
 ```{r}
-# =========================================================
-# Final Model Feature Importance
-# =========================================================
-
-importance <- xgb.importance(
-  model = bst_model_2,
-  feature_names = feature_cols
-)
-
-xgb.plot.importance(importance)
-
-# View the top 20 most important features as a tibble
-importance_tbl <- as_tibble(importance) %>%
-  arrange(desc(Gain)) %>%      # or desc(Importance) depending on version
-  slice(1:20)
-
-print(importance_tbl)
-```
-
-```{r}
+#| label: tbl-model-results
 # =========================================================
 # Regression Metrics on Validation Set
 # =========================================================
@@ -1581,14 +1292,95 @@ explained_variance <- 1 - var_res / var_actual
 
 
 metrics <- tibble(
-  Metric = c("MAE", "MSE", "RMSE", "R_squared", "MAPE_percent", "Explained_variance"),
+  Metric = c("MAE", "MSE", "RMSE", "R Squared", "MAPE %", "Explained Variance"),
   Value  = c(mae, mse, rmse, r_squared, mape, explained_variance)
 )
 
-print(metrics)
+knitr::kable(
+  metrics,
+  caption = "Metric Results from XGBoost Model",
+  digits = 3
+)
+```
+
+**Interpretation:**
+
+- **MAE:** On average, the model’s predictions are off by about 0.87 °C. This means the model’s daily high forecast is typically within roughly 0.87 °C of the actual daily high temperature.
+
+- **MSE:** The average squared error is 1.609 °C², which indicates that large mistakes are rare. In practice, this suggests the model rarely produces daily high temperature forecasts that are abnormally higher or lower than the observed high for a given day.
+
+- **RMSE:** The typical prediction error is about 1.27 °C. For example, if the actual daily high temperature is 22 °C, the model will usually predict a daily high between about 20.73 °C and 23.27 °C.
+
+- $\mathbf{R^2}$**:** About 90.4% of the variability in temperature over time is explained by the model, indicating a strong fit and that most day‑to‑day fluctuations in temperature are captured by the predictors.
+
+- **MAPE:** On average, the forecasts are off by about 4.37% relative to the actual temperature value, implying that the model maintains good proportional accuracy across both cooler and warmer days.
+
+- **Explained Variance:** About 90.4% of the observed variation in temperature is accounted for by the model, reinforcing that it represents real‑world fluctuations well.
+
+@tbl-ft-importance and @fig-ft-imprt below display the ten most influential predictors in the XGBoost model, ranked by gain, which reflects each feature’s contribution to reducing prediction error
+
+
+```{r}
+#| label: tbl-ft-importance
+# =========================================================
+# Model Feature Importance Table
+# =========================================================
+
+importance <- xgb.importance(
+  model = model,
+  feature_names = feature_cols
+)
+
+importance_tbl <- as_tibble(importance) %>%
+  arrange(desc(Gain)) %>%      
+  slice(1:10)
+
+knitr::kable(
+  importance_tbl,
+  caption = "Feature Importance Table",
+  digits = 3
+)
 ```
 
 ```{r}
+#| label: fig-ft-imprt
+#| fig-cap: "Top 10 features ranked by gain."
+# =========================================================
+# Model Feature Importance Plot
+# =========================================================
+
+feature_importance_plot <- ggplot(
+  importance_tbl,
+  aes(x = reorder(Feature, Gain), y = Gain)
+) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  theme_capstone +              
+  labs(
+    title = "XGBoost Feature Importance (Top 10)",
+    x = "Feature",
+    y = "Gain"
+  )
+
+feature_importance_plot
+save_plot(feature_importance_plot, "feature_importance_top10.png")
+```
+
+**Interpretation:**
+
+- **Morning Mean Temperature:** The morning mean temperature (`temp_mean_morning`) has the highest gain at 0.553, indicating that early‑day, morning, 6-11 UTC, temperatures are the primary driver of accurate daily high temperature forecasts at KLAX.
+
+- **Temporal Persistence:** The importance of previous day’s high (`lag1_daily_high_temp`) and the previous day’s mean temperature (`lag1_temp_mean_day`) shows that yesterday’s temperature is persistent into today, which the model leverages.
+
+- **Humidity‑Related Variables:** The minimum morning relative humidity (`rh_min_morning`), mean morning relative humidity (`rh_mean_morning`), and mean morning dewpoint (`dew_mean_morning`) all contribute meaningfully to the model, suggesting that moisture conditions play a notable role in the day’s maximum temperature.
+
+- **Night‑to‑Morning Ranges:** The mean night temperature (`temp_mean_night`) and the temperature change between the mean of the morning and the mean of night (`temp_range_night_morning`) capture how the night time cooling and subsequent morning warming can effect the day’s temperatures, contributing additional explanatory power.
+
+- **Seasonal and Wind Driven Signals:** The transformed version of the calendar day (`doy_cos`) helps capture the seasonal cycle and helps the model understand how typical temperatures change throughout the year. The mean wind speed from the previous day (`lag1_wind_mean_day`) allows the model to account for recent wind conditions that can carry warmer or cooler air into the area and influence today’s temperature.
+
+
+```{r}
+#| label: fig-predicted-vs-actual
 # =========================================================
 # Validation Diagnostics Data
 # =========================================================
@@ -1599,10 +1391,7 @@ valid_diag <- valid_data %>%
     pred_high   = as.numeric(pred_valid),
     residual    = actual_high - pred_high
   )
-```
 
-
-```{r}
 # =========================================================
 # Predicted vs Actual Daily Highs
 # =========================================================
@@ -1612,17 +1401,20 @@ plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
   geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
   labs(
     title    = "Predicted vs Actual Daily High Temperature",
-    subtitle = "Validation period (> 2018)",
+    subtitle = "Validation period 2019-2026",
     x        = "Predicted daily high (°C)",
     y        = "Actual daily high (°C)"
   ) +
   theme_capstone
 
 plot_pred_vs_actual
+save_plot(plot_pred_vs_actual, "plot_pred_vs_actual.png")
 ```
 
+@fig-predicted-vs-actual
 
 ```{r}
+#| label: fig-resid-vs-actual
 # =========================================================
 # Residuals vs Actual Temperature
 # =========================================================
@@ -1639,8 +1431,10 @@ plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
   theme_capstone
 
 plot_resid_vs_actual
+save_plot(plot_resid_vs_actual, "plot_resid_vs_actual.png")
 ```
 
+@fig-resid-vs-actual
 
 ### Conclusion
 
