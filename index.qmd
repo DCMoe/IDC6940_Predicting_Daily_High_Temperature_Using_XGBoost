@@ -36,7 +36,7 @@ Among these, Extreme Gradient Boosting (XGBoost) has emerged as a powerful and e
 Recent research has been exploring the use of various machine learning techniques to enhance weather prediction accuracy, particularly in short-term forecasting applications. 
 Ensemble learning methods such as XGBoost have been shown to outperform traditional statistical models and complement numerical weather prediction systems by effectively capturing nonlinear relationships and correcting systematic biases [@DONG2023105579]. 
 Prior studies have applied XGBoost to tasks such as precipitation forecasting and bias correction of meteorological outputs, demonstrating improved predictive performance across diverse geographic regions [@DONG2023105579]. 
-Additionally, a comparative analyses of machine learning algorithms highlights the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023], [@Singh2023MachineLF], [@Airlangga_2025]. 
+Additionally, a comparative analyses of machine learning algorithms highlights the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023; @Singh2023MachineLF; @Airlangga_2025]. 
 Despite these advances, many studies focus on regional or large-scale forecasting problems, leaving opportunities for more localized, site-specific modeling of daily temperature using high-frequency observational data. 
 XGBoost has also been documented in tutorial and use-case contexts for its implementation and interpretability in applied machine learning problems [@xgboost_tutorial].
 

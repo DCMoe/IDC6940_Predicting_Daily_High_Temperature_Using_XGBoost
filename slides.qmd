@@ -20,77 +20,66 @@ editor:
     wrap: 72
 ---
 
-::: callout-important
-**Remember:** Your goal is to make your audience understand and care
-about your findings. By crafting a compelling story, you can effectively
-communicate the value of your data science project.
-
-Carefully read this template since it has instructions and tips to
-writing!
-
-More information about `revealjs`:
-<https://quarto.org/docs/reference/formats/presentations/revealjs.html>
-:::
-
-## Introduction  {.smaller}
-
--   Develop a storyline that captures attention and maintains interest.
-
--   Your audience is your peers
-
--   Clearly state the problem or question you're addressing.
-
--   Introduce why it is relevant needs.
-
--   Provide an overview of your approach.
-
-
 ## Introduction {.smaller}
 
--   Predict daily high temperature at KLAX
+- Daily high temperature forecasting is useful for energy-demand planning, aviation, transportation, and public safety [@WANG2023101499].
 
--   Relevant to aviation and local operations
+- Operational decisions are usually made from site-specific weather conditions rather than broad regional observations.
 
--   Site-specific forecasting is still difficult
+- Most forecasting studies emphasize broader regional prediction problems, leaving room for local daily temperature prediction to be explored [@Khan_2025_MultiOutputTemp; @dias2018statistical].
 
--   NOAA ASOS provides high-frequency weather data at 5-minute intervals
 
--   XGBoost captures nonlinear weather relationships
+## Introduction Continued {.smaller}
+
+- Ensemble models have improved weather forecasting by capturing nonlinear relationships in meteorological data [@Airlangga_2025].
+
+- XGBoost has shown strong performance in weather-related applications such as precipitation forecasting [@DONG2023105579].
+
+- This study asks: **Can XGBoost accurately predict daily high temperatures at KLAX using 5-minute NOAA ASOS observations?**
+
+
+## Introduction Continued {.smaller}
+
+- Dataset: 5-minute NOAA ASOS observations from KLAX [@asos_dataset_noaa].
+
+- Method: An XGBoost regression model is developed to predict daily high temperature [@Chen_2016].
+
+- Performance is evaluated using MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, and feature importance is analyzed to interpret the model [@Zhou_2023; @Singh2023MachineLF; @xgboost_tutorial].
 
 
 ## Methods
 
--   Detail the models or algorithms used.
+- Target: Daily maximum air temperature, $T_{max}$, at KLAX
 
--   Justify your choices based on the problem and data.
+- Model: XGBoost regression trees
 
+- XGBoost is well suited for tabular meteorological data:
 
-## Methods
-
--   Target: daily high temperature at KLAX
-
--   Model: XGBoost regression trees
-
--   Captures nonlinear predictor interactions
-
--   Handles missing weather observations
-
--   Feature importance aids interpretation
+  - Models nonlinear effects and interactions among predictors.
+  
+  - Handles missing values from sensor malfunctions without imputation.
 
 
-## Methods Continued
+## Methods Continued {.smaller}
 
--   Prediction = sum of boosted trees
+-   Prediction is the sum of many boosted regression trees.
 
 $$
 \hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F} \tag{1}
 $$
 
--   Objective = fit + regularization
+- Each tree contributes part of the final temperature prediction.
+
+- The model is trained to balance fit and complexity through regularization.
 
 $$
 \mathcal{L} = \sum_{i} l(\hat{y}_i, y_i) + \sum_{k=1}^{K} \left[ \gamma T_k + \tfrac{1}{2}\lambda \lVert w_k \rVert^2 \right] \tag{2}
 $$
+
+- The loss term measures prediction error, while the penalty term discourages overly complex trees.
+
+\* *XGBoost Model [@Chen_2016]*
+
 
 ## Data Exploration and Visualization
 
