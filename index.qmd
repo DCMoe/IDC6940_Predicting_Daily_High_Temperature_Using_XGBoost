@@ -935,7 +935,7 @@ The variables are also arranged chronologically using the timestamps to ensure t
 
 A few variables had identifiable erroneous sensor values. 
 For visibility, the max value was capped at 10 statute miles as this is the limit for the sensors.
-Wind gusts were above 100 kt were dropped under the assumption that gusts above 100 kt could be considered unrealistic.
+Wind gusts above 100 kt were dropped under the assumption that gusts above 100 kt could be considered unrealistic.
 Finally, any non-finite values within variables were converted to missing rather than using imputation as XGBoost is capable of handling such cases.
 To obtain the target variable of the daily high temperatures, the 5-minute temperatures were grouped by the date and taking the maximum.
 This preprocessed dataset allowed us to derive our features and target while maintaining realistic outliers for the model to see.
@@ -1339,7 +1339,7 @@ When viewed together, these important features provide consistent insight into h
 Morning temperature and humidity conditions, along with the previous day's maximum temperature and average temperature, indicate that persistence and the diurnal cycle primarily drive the model's forecast.
 The diurnal cycle's role in this can be viewed as yesterday’s warmth sets the baseline with overnight cooling modifies it, and morning conditions reveal how quickly the atmosphere is poised to heat up.
 The presence of dewpoint and relative humidity in the 10 most influential features underscores the role of moisture and the marine layer in governing daytime highs, while wind‑related features reflect the importance of recent flow patterns in advecting cooler or warmer air into the region.
-Seasonal signals are also represented through the day-of-year transformation providing the model with a broader climatological backdrop that aides the model in understanding whether a given morning is unusually hit or cold for that time of year.
+Seasonal signals are also represented through the day-of-year transformation providing the model with a broader climatological backdrop that aides the model in understanding whether a given morning is unusually hot or cold for that time of year.
 Overall, these features show that the model is integrating a physically intuitive combination of persistence, diurnal cycle, moisture, wind, and seasonality to explain how daily high temperatures behave at KLAX.
 
 ```{r}
