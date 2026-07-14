@@ -105,9 +105,8 @@ The dataset used in this study consists of 5-minute interval observations for KL
 
 ```{r, warning=FALSE, message=FALSE}
 # =========================================================
-# Setup Packages
+# Load Packages
 # =========================================================
-# Load the packages
 
 library(arrow)
 library(dplyr)
@@ -123,8 +122,6 @@ library(xgboost)
 # =========================================================
 # Setup Paths
 # =========================================================
-# Define the source file path, figure output directory, and
-# fixed reference date used to construct the recent 5-year window.
 
 parquet_path <- "KLAX_5min_complete.parquet"
 output_dir <- "output"
@@ -137,8 +134,6 @@ if (!dir.exists(output_dir)) {
 # =========================================================
 # Import Data
 # =========================================================
-# Read the full KLAX parquet file and standardize the variable
-# types needed for tables, figures, and derived calculations.
 
 ts_col <- "datetime_utc"
 temp_col <- "temp_c"
@@ -169,8 +164,6 @@ df_all <- df_raw %>%
 # =========================================================
 # Derive Variables
 # =========================================================
-# Create the short-term and 3-hour temperature-change fields,
-# plus wind-direction groupings used in the distribution analyses.
 
 df_all <- df_all %>%
   mutate(
@@ -197,8 +190,6 @@ df_all <- df_all %>%
 # =========================================================
 # Build Subsets (Full Record)
 # =========================================================
-# Create full-record subsets for climatology and temperature-change
-# analyses. Exploratory work uses the full 2000–2026 KLAX record.
 
 df_full <- df_all %>%
   filter(!is.na(temp))
@@ -233,8 +224,6 @@ prop_zero <- nrow(zero_changes) / nrow(df_5min_change_all)
 # =========================================================
 # Build Daily High Data
 # =========================================================
-# Build daily high, monthly, and day-of-year summary datasets
-# for the visualizations.
 
 daily_high <- df_full %>%
   mutate(date = as_date(timestamp)) %>%
@@ -275,8 +264,6 @@ day_of_year_month_starts <- tibble(
 # =========================================================
 # Build Diurnal Data
 # =========================================================
-# Compute the average hourly temperature cycle using the same
-# 5-year window used for the recent-climatology figures.
 
 diurnal_avg <- df_full %>%
   mutate(hour = hour(timestamp)) %>%
@@ -289,8 +276,6 @@ diurnal_avg <- df_full %>%
 # =========================================================
 # Build Event Window Data
 # =========================================================
-# Extract the selected 36-hour event window for the multi-panel
-# figure that highlights short-term co-variation among variables.
 
 start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
 end_time <- ymd_hms("2025-07-23 12:00:00", tz = "UTC")
@@ -301,8 +286,6 @@ event_data <- df_all %>%
 # =========================================================
 # Helper Functions
 # =========================================================
-# Define reusable helpers for descriptive-statistics rows and
-# consistent figure export across the capstone project.
 
 make_descriptive_row <- function(data, variable, label) {
   x <- data[[variable]]
@@ -333,8 +316,6 @@ save_plot <- function(plot_object, file_name, width = 7, height = 5, dpi = 300) 
 # =========================================================
 # Helper Plot Theme
 # =========================================================
-# Define a common plotting theme so all figures share a
-# consistent visual style and manuscript-ready appearance.
 
 theme_capstone <- theme_minimal() +
   theme(
@@ -420,8 +401,6 @@ Taken together, these descriptive statistics justify the choice of XGBoost as th
 # =========================================================
 # Temperatures by Wind Groups Table
 # =========================================================
-# Summarize air temperature by east-wind and west-wind groups
-# across the full record to match the wind-regime histogram section.
 
 temp_by_wind_summary <- df_all %>%
   filter(!is.na(wind_group), !is.na(temp)) %>%
@@ -448,7 +427,7 @@ knitr::kable(
 ```
 
 @tbl-temp-by-wind-group provides a summary of air temperatures based on whether the wind is blowing from east to west or west to east.
-First, west winds more occur frequently with roughly three times as many observations as east winds.
+First, west winds occur more frequently with roughly three times as many observations as east winds.
 West winds also exhibit higher mean and median temperatures when compared to east winds.
 East winds show a much lower minimum temperature, indicating that the east winds are more likely to occur during cooler seasonal periods.
 While this appears counterintuitive to the typical understanding that cool marine west winds provide cooler temperatures, this could be indicative of underlying seasonal weather patterns where east winds might prevail during cooler seasons like the winter months.
@@ -460,8 +439,6 @@ This is seen later in this study in @fig-3h-wind-change and supports the idea of
 # =========================================================
 # Temperature Summary Statistics
 # =========================================================
-# Summarize the magnitude of full-record 5-minute temperature
-# changes and identify the 99th-percentile abnormal threshold.
 
 abs_q <- quantile(
   df_5min_change_all$abs_temp_change_5min,
@@ -540,8 +517,6 @@ There does not appear to be any long term drift with a longer term average aroun
 # =========================================================
 # Daily High Time Series Plot
 # =========================================================
-# Plot the recent 5-year daily high temperature time series.
-
 
 p_daily_high <- ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
   geom_line(color = "darkorange", alpha = 0.8, linewidth = 0.4) +
@@ -561,7 +536,6 @@ p_daily_high <- ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-
 p_daily_high
 save_plot(p_daily_high, "fig_daily_high_temp_ts.png")
 ```
@@ -578,8 +552,6 @@ As median temperatures begin to cool from October through December, the interqua
 # =========================================================
 # Monthly Distribution Boxplot
 # =========================================================
-# Plot the monthly distribution of daily high temperatures.
-
 
 p_boxplot <- ggplot(daily_high_months, aes(x = month, y = daily_high_temp, fill = month)) +
   geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
@@ -613,9 +585,6 @@ Individual days in the warmer months, however, still exhibit more frequent extre
 # =========================================================
 # Daily High Ranges
 # =========================================================
-# Plot the day-of-year annual cycle using mean, minimum,
-# maximum, and interquartile-range summaries.
-
 
 p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
   geom_ribbon(
@@ -668,8 +637,6 @@ There appears to be a mild positive, right-skew with a slightly longer tail due 
 # =========================================================
 # Daily High Histogram
 # =========================================================
-# Plot the frequency distribution of daily high temperatures.
-
 
 p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
   geom_histogram(binwidth = 1, fill = "forestgreen", color = "white", alpha = 0.8) +
@@ -693,10 +660,8 @@ This disproportionate amount of 0 °C obscures the remaining temperature changes
 #| label: fig-temp-change-all
 #| fig-cap: "Histogram of all 5-minute temperature changes at KLAX, 2000-2026."
 # =========================================================
-# 5 Minute Temp Change All Plot
+# 5-Minute Temp Change All Plot
 # =========================================================
-# Plot the full-record histogram of all 5-minute temperature changes.
-
 
 p_hist_change <- ggplot(df_5min_change_all, aes(x = temp_change_5min)) +
   geom_histogram(
@@ -727,10 +692,8 @@ This table confirms that even when changes occur, most changes are small in magn
 #| label: fig-temp-change-nonzero
 #| fig-cap: "Histogram of non-zero 5-minute temperature changes at KLAX, 2000-2026."
 # =========================================================
-# 5 Minute Temp Change Excluding Zeros Plot
+# 5-Minute Temp Change Excluding Zeros Plot
 # =========================================================
-# Plot the full-record histogram of non-zero 5-minute changes.
-
 
 p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change_5min)) +
   geom_histogram(
@@ -762,8 +725,6 @@ Over this longer interval, the distribution of temperature changes appears appro
 # =========================================================
 # 3-hour Temp Changes Histogram
 # =========================================================
-# Plot the full-record distribution of 3-hour temperature changes.
-
 
 p_3h_temp_change <- ggplot(df_3h_change_all, aes(x = temp_change_3h)) +
   geom_histogram(binwidth = 1, boundary = 0, fill = "steelblue", colour = "white") +
@@ -793,9 +754,6 @@ As seen in @fig-3h-wind-change, Westerly gusts from offshore provide both a more
 # =========================================================
 # 3-hour Wind Gust Temp Changes Histogram
 # =========================================================
-# Plot 3-hour temperature change after gust observations,
-# grouped by easterly and westerly wind regimes.
-
 
 p_3h_wind_change <- ggplot(df_3h_gust_change, aes(x = temp_change_next_3h, fill = gust_wind_group)) +
   geom_histogram(
@@ -840,9 +798,6 @@ The smooth and interpretable daily pattern suggests that time‑based predictors
 # =========================================================
 # Diurnal Cycle Plot
 # =========================================================
-# Plot the average diurnal temperature cycle for the recent
-# 5-year analysis window.
-
 
 p_diurnal <- ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
   geom_line(color = "purple", linewidth = 1.2) +
@@ -876,8 +831,6 @@ Together, these patterns show that the ASOS dataset captures coherent meteorolog
 # =========================================================
 # Multivariable Window
 # =========================================================
-# Plot a five-panel event-window figure showing the short-term
-# co-variation of temperature, moisture, wind, visibility, and pressure.
 
 plot_title <- paste0(
   "KLAX 5-minute observations ",

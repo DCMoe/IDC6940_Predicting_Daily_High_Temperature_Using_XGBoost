@@ -40,7 +40,11 @@ editor:
 
 ## Introduction Continued {.smaller}
 
-- Dataset: 5-minute NOAA ASOS observations from KLAX [@asos_dataset_noaa].
+- Dataset: National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]
+
+  - Location: Los Angeles International Airport (KLAX) station
+  
+  - 5-minute interval weather measurements 
 
 - Method: An XGBoost regression model is developed to predict daily high temperature [@Chen_2016].
 
@@ -94,33 +98,612 @@ $$
 A study was conducted to determine how...
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
-# loading packages 
-library(tidyverse)
+# =========================================================
+# Load Packages
+# =========================================================
+
+library(arrow)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
 library(knitr)
-library(ggthemes)
-library(ggrepel)
-library(dslabs)
-```
+library(patchwork)
+library(scales)
+library(tibble)
+library(tidyr)
+library(xgboost)
 
-```{r, warning=FALSE, echo=F}
-# Load Data
-#kable(head(murders))
+# =========================================================
+# Setup Paths
+# =========================================================
 
-ggplot1 = murders %>% ggplot(mapping = aes(x=population/10^6, y=total)) 
+parquet_path <- "KLAX_5min_complete.parquet"
+reference_time <- ymd_hms("2026-06-07 23:25:00", tz = "UTC")
 
-  ggplot1 + geom_point(aes(col=region), size = 4) +
-  geom_text_repel(aes(label=abb)) +
-  scale_x_log10() +
-  scale_y_log10() +
-  geom_smooth(formula = "y~x", method=lm,se = F)+
-  xlab("Populations in millions (log10 scale)") + 
-  ylab("Total number of murders (log10 scale)") +
-  ggtitle("US Gun Murders in 2010") +
-  scale_color_discrete(name = "Region")+
-      theme_bw()
+
+# =========================================================
+# Import Data
+# =========================================================
+
+ts_col <- "datetime_utc"
+temp_col <- "temp_c"
+
+df_raw <- read_parquet(parquet_path)
+
+df_all <- df_raw %>%
+  mutate(
+    timestamp      = as_datetime(.data[[ts_col]], tz = "UTC"),
+    temp           = as.numeric(.data[[temp_col]]),
+    dewpoint_c     = as.numeric(dewpoint_c),
+    rh_pct         = as.numeric(rh_pct),
+    wind_dir_deg   = as.numeric(wind_dir),
+    wind_speed_kt  = as.numeric(wind_speed_kt),
+    wind_gust_kt   = as.numeric(wind_gust_kt),
+    visibility_sm  = as.numeric(visibility_sm),
+    altimeter_inhg = as.numeric(altimeter_inhg)
+  ) %>%
+  mutate(
+    visibility_sm = ifelse(is.finite(visibility_sm), visibility_sm, NA_real_)
+  ) %>%
+  mutate(
+    wind_gust_kt = ifelse(!is.na(wind_gust_kt) & wind_gust_kt > 100, NA_real_, wind_gust_kt),
+    visibility_sm = ifelse(!is.na(visibility_sm) & visibility_sm > 10, NA_real_, visibility_sm)
+  ) %>%
+  arrange(timestamp)
+
+# =========================================================
+# Derive Variables
+# =========================================================
+
+df_all <- df_all %>%
+  mutate(
+    temp_change_5min = temp - lag(temp),
+    abs_temp_change_5min = abs(temp_change_5min),
+    timestamp_lag_3h = lag(timestamp, 36),
+    temp_lag_3h = lag(temp, 36),
+    temp_change_3h = temp - temp_lag_3h,
+    timestamp_future_3h = lead(timestamp, 36),
+    temp_future_3h = lead(temp, 36),
+    temp_change_next_3h = temp_future_3h - temp,
+    wind_group = case_when(
+      wind_dir_deg >= 210 & wind_dir_deg <= 330 ~ "West winds",
+      wind_dir_deg >= 30 & wind_dir_deg <= 150 ~ "East winds",
+      TRUE ~ NA_character_
+    ),
+    gust_wind_group = case_when(
+      wind_dir_deg >= 210 & wind_dir_deg <= 330 ~ "Westerly gusts (west to east)",
+      wind_dir_deg >= 30 & wind_dir_deg <= 150 ~ "Easterly gusts (east to west)",
+      TRUE ~ NA_character_
+    )
+  )
+
+# =========================================================
+# Build Subsets (Full Record)
+# =========================================================
+
+df_full <- df_all %>%
+  filter(!is.na(temp))
+
+df_5min_change_all <- df_all %>%
+  filter(!is.na(temp_change_5min))
+
+df_3h_change_all <- df_all %>%
+  filter(
+    !is.na(temp_change_3h),
+    as.numeric(timestamp - timestamp_lag_3h, units = "mins") == 180
+  )
+
+df_3h_gust_change <- df_all %>%
+  filter(
+    !is.na(wind_gust_kt),
+    wind_gust_kt < 100,
+    !is.na(temp_change_next_3h),
+    !is.na(gust_wind_group),
+    as.numeric(timestamp_future_3h - timestamp, units = "mins") == 180,
+    abs(temp_change_next_3h) <= 10
+  )
+
+zero_changes <- df_5min_change_all %>%
+  filter(temp_change_5min == 0)
+
+nonzero_changes <- df_5min_change_all %>%
+  filter(temp_change_5min != 0)
+
+prop_zero <- nrow(zero_changes) / nrow(df_5min_change_all)
+
+# =========================================================
+# Build Daily High Data
+# =========================================================
+
+daily_high <- df_full %>%
+  mutate(date = as_date(timestamp)) %>%
+  group_by(date) %>%
+  summarise(
+    daily_high_temp = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(daily_high_temp))
+
+daily_high_months <- daily_high %>%
+  mutate(month = month(date, label = TRUE, abbr = TRUE))
+
+daily_high_doy <- daily_high %>%
+  mutate(
+    year = year(date),
+    doy = yday(date)
+  ) %>%
+  filter(doy <= 365)
+
+doy_stats <- daily_high_doy %>%
+  group_by(doy) %>%
+  summarise(
+    mean_high = mean(daily_high_temp, na.rm = TRUE),
+    q1_high = quantile(daily_high_temp, 0.25, na.rm = TRUE),
+    q3_high = quantile(daily_high_temp, 0.75, na.rm = TRUE),
+    min_high = min(daily_high_temp, na.rm = TRUE),
+    max_high = max(daily_high_temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+day_of_year_month_starts <- tibble(
+  doy = c(1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335),
+  month = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+)
+
+# =========================================================
+# Build Diurnal Data
+# =========================================================
+
+diurnal_avg <- df_full %>%
+  mutate(hour = hour(timestamp)) %>%
+  group_by(hour) %>%
+  summarise(
+    avg_temp = mean(temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# =========================================================
+# Build Event Window Data
+# =========================================================
+
+start_time <- ymd_hms("2025-07-22 00:00:00", tz = "UTC")
+end_time <- ymd_hms("2025-07-23 12:00:00", tz = "UTC")
+
+event_data <- df_all %>%
+  filter(timestamp >= start_time, timestamp <= end_time)
+
+# =========================================================
+# Helper Functions
+# =========================================================
+
+make_descriptive_row <- function(data, variable, label) {
+  x <- data[[variable]]
   
+  tibble(
+    Variable = label,
+    N = sum(!is.na(x)),
+    Mean = mean(x, na.rm = TRUE),
+    SD = sd(x, na.rm = TRUE),
+    Q1 = quantile(x, 0.25, na.rm = TRUE),
+    Median = median(x, na.rm = TRUE),
+    Q3 = quantile(x, 0.75, na.rm = TRUE),
+    Min = min(x, na.rm = TRUE),
+    Max = max(x, na.rm = TRUE)
+  )
+}
 
+# =========================================================
+# Helper Plot Theme
+# =========================================================
+
+theme_capstone <- theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey40"),
+    plot.caption = element_text(color = "grey50", size = 8),
+    legend.position = "bottom"
+  )
 ```
+
+## Descriptive Statistics {.smaller}
+
+::: {.panel-tabset}
+
+### Key Variables
+
+```{r, warning=FALSE, echo=FALSE}
+continuous_summary <- bind_rows(
+  make_descriptive_row(df_full, "wind_speed_kt", "Wind speed (kt)"),
+  make_descriptive_row(df_full, "wind_gust_kt", "Wind gust (kt)"),
+  make_descriptive_row(df_full, "visibility_sm", "Visibility (statute mi)"),
+  make_descriptive_row(df_full, "temp", "Air temperature (°C)"),
+  make_descriptive_row(df_full, "dewpoint_c", "Dewpoint temperature (°C)"),
+  make_descriptive_row(df_full, "rh_pct", "Relative humidity (%)"),
+  make_descriptive_row(df_full, "altimeter_inhg", "Altimeter (inHg)")
+)
+
+knitr::kable(
+  continuous_summary,
+  caption = "Descriptive statistics for KLAX 5-minute variables, 2000–2026.",
+  digits = 2
+)
+```
+
+### Wind Groups
+
+```{r, warning=FALSE, echo=FALSE}
+temp_by_wind_summary <- df_all %>%
+  filter(!is.na(wind_group), !is.na(temp)) %>%
+  group_by(wind_group) %>%
+  summarise(
+    N = sum(!is.na(temp)),
+    Mean = mean(temp, na.rm = TRUE),
+    SD = sd(temp, na.rm = TRUE),
+    Q1 = quantile(temp, 0.25, na.rm = TRUE),
+    Median = median(temp, na.rm = TRUE),
+    Q3 = quantile(temp, 0.75, na.rm = TRUE),
+    Min = min(temp, na.rm = TRUE),
+    Max = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+names(temp_by_wind_summary) <- "Wind Group"[1]
+
+knitr::kable(
+  temp_by_wind_summary,
+  caption = "Descriptive statistics for air temperature grouped by east-wind and west-wind observations at KLAX, 2000-2026.",
+  digits = 2
+)
+```
+
+### 5-Minute Temperature Change
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+abs_q <- quantile(
+  df_5min_change_all$abs_temp_change_5min,
+  probs = c(0.5, 0.75, 0.9, 0.95, 0.99, 1.0),
+  na.rm = TRUE
+)
+
+abnormal_threshold <- abs_q["99%"]
+
+df_5min_change_all <- df_5min_change_all %>%
+  mutate(abnormal_change = abs_temp_change_5min > abnormal_threshold)
+
+summary_stats <- tibble(
+  Statistic = c(
+    "Total observations",
+    "Mean absolute 5-minute change (°C)",
+    "Median absolute 5-minute change (°C)",
+    "75th percentile (°C)",
+    "90th percentile (°C)",
+    "95th percentile (°C)",
+    "99th percentile (°C) [abnormal threshold]",
+    "Maximum absolute 5-minute change (°C)",
+    "Number of abnormal changes",
+    "Percentage of abnormal changes (%)"
+  ),
+  Value_raw = c(
+    nrow(df_5min_change_all),
+    mean(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    median(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    abs_q["75%"],
+    abs_q["90%"],
+    abs_q["95%"],
+    abs_q["99%"],
+    max(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
+    sum(df_5min_change_all$abnormal_change, na.rm = TRUE),
+    100 * mean(df_5min_change_all$abnormal_change, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    Value = case_when(
+      Statistic %in% c("Total observations", "Number of abnormal changes") ~ comma(Value_raw, accuracy = 1),
+      Statistic == "Percentage of abnormal changes (%)" ~ number(Value_raw, accuracy = 0.01),
+      TRUE ~ number(Value_raw, accuracy = 0.01)
+    )
+  )
+
+knitr::kable(
+  summary_stats %>% select(Statistic, Value),
+  caption = "Summary statistics for 5-minute temperature changes at KLAX, 2000-2026."
+)
+```
+
+:::
+
+
+## Visualizations and Insights {.smaller}
+
+::: {.panel-tabset}
+
+### Daily High Time Series
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Daily High Time Series Plot
+# =========================================================
+
+p_daily_high <- ggplot(daily_high, aes(x = date, y = daily_high_temp)) +
+  geom_line(color = "darkorange", alpha = 0.8, linewidth = 0.4) +
+  labs(
+    title = "Daily High Temperature at KLAX, 2000-2026",
+    x = "Date",
+    y = "Daily High Temperature (°C)",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  scale_x_date(
+    date_breaks = "2 years",
+    date_labels = "%Y",
+    expand = c(0.01, 0.01)
+  ) +
+  theme_capstone +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+p_daily_high
+```
+
+
+### Monthly Boxplot
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Monthly Distribution Boxplot
+# =========================================================
+
+p_boxplot <- ggplot(daily_high_months, aes(x = month, y = daily_high_temp, fill = month)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.3) +
+  labs(
+    title = "Monthly Distribution of Daily High Temperature at KLAX",
+    x = "Month",
+    y = "Daily High Temperature (°C)",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey40"),
+    plot.caption = element_text(color = "grey50", size = 8,),
+    legend.position = "none"
+  )
+
+p_boxplot
+```
+
+
+### Daily High Ranges
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Daily High Ranges
+# =========================================================
+
+p_daily_high_ranges <- ggplot(doy_stats, aes(x = doy)) +
+  geom_ribbon(
+    aes(ymin = q1_high, ymax = q3_high),
+    fill = "skyblue3",
+    alpha = 0.35
+  ) +
+  geom_line(
+    aes(y = min_high, color = "Min"),
+    linewidth = 0.4,
+    linetype = "dashed"
+  ) +
+  geom_line(
+    aes(y = max_high, color = "Max"),
+    linewidth = 0.4,
+    linetype = "dashed"
+  ) +
+  geom_line(
+    aes(y = mean_high, color = "Mean"),
+    linewidth = 0.9
+  ) +
+  scale_color_manual(
+    name = "Statistic",
+    values = c("Min" = "gray50", "Max" = "gray50", "Mean" = "firebrick3")
+  ) +
+  scale_x_continuous(
+    breaks = day_of_year_month_starts$doy,
+    labels = day_of_year_month_starts$month,
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    title = "Daily High Temperature at KLAX by Day of Year",
+    x = "Month",
+    y = "Daily High Temperature (°C)",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone +
+  theme(panel.grid.minor = element_blank())
+
+p_daily_high_ranges
+```
+
+
+:::
+
+
+## Visualizations and Insights Continued {.smaller}
+
+::: {.panel-tabset}
+
+### Daily High Histogram
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Daily High Histogram
+# =========================================================
+
+p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
+  geom_histogram(binwidth = 1, fill = "forestgreen", color = "white", alpha = 0.8) +
+  labs(
+    title = "Histogram of Daily High Temperature at KLAX",
+    x = "Daily High Temperature (°C)",
+    y = "Frequency",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone
+
+p_hist_daily
+```
+
+
+### 5-Minute Temp Changes
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# 5-Minute Temp Change All Plot
+# =========================================================
+
+p_hist_change <- ggplot(df_5min_change_all, aes(x = temp_change_5min)) +
+  geom_histogram(
+    binwidth = 0.1,
+    fill = "steelblue",
+    color = "white",
+    alpha = 0.8
+  ) +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  labs(
+    title = "Histogram of 5-Minute Temperature Changes at KLAX",
+    subtitle = sprintf("Proportion of exact zero changes: %.1f%%", 100 * prop_zero),
+    x = "5-Minute Temperature Change (°C)",
+    y = "Frequency",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone
+
+p_hist_change
+```
+
+
+### 5-Minute Temp Changes Non-Zero
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# 5-Minute Temp Change Excluding Zeros Plot
+# =========================================================
+
+p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change_5min)) +
+  geom_histogram(
+    binwidth = 0.1,
+    fill = "darkorange",
+    color = "white",
+    alpha = 0.8
+  ) +
+  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  labs(
+    title = "Histogram of Non-Zero 5-Minute Temperature Changes at KLAX",
+    x = "5-Minute Temperature Change (°C)",
+    y = "Frequency",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone
+
+p_non_zero_hist
+```
+
+
+:::
+
+
+## Visualizations and Insights Continued {.smaller}
+
+::: {.panel-tabset}
+
+### 3-Hour Temp Change
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# 3-hour Temp Changes Histogram
+# =========================================================
+
+p_3h_temp_change <- ggplot(df_3h_change_all, aes(x = temp_change_3h)) +
+  geom_histogram(binwidth = 1, boundary = 0, fill = "steelblue", colour = "white") +
+  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+  coord_cartesian(xlim = c(-10, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Histogram of 3-Hour Temperature Changes at KLAX",
+    x = "Temperature Change over 3 Hours (°C)",
+    y = "Number of 3-Hour Periods",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone
+
+p_3h_temp_change
+```
+
+
+### 3-Hour Temp Change by Wind Group
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# 3-hour Wind Gust Temp Changes Histogram
+# =========================================================
+
+p_3h_wind_change <- ggplot(df_3h_gust_change, aes(x = temp_change_next_3h, fill = gust_wind_group)) +
+  geom_histogram(
+    binwidth = 1,
+    boundary = 0,
+    position = "identity",
+    alpha = 0.6,
+    colour = "white"
+  ) +
+  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
+  coord_cartesian(xlim = c(-10, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_manual(
+    values = c(
+      "Westerly gusts (west to east)" = "lightblue",
+      "Easterly gusts (east to west)" = "red"
+    )
+  ) +
+  labs(
+    title = "Temperature Change After Gusts at KLAX: Onshore vs Offshore",
+    x = "Temperature Change over 3 Hours (°C)",
+    y = "Number of Gust Observations",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station",
+    fill = NULL
+  ) +
+  theme_capstone +
+  theme(legend.position = "top")
+
+p_3h_wind_change
+```
+
+
+### Diurnal Cycle
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Diurnal Cycle Plot
+# =========================================================
+
+p_diurnal <- ggplot(diurnal_avg, aes(x = hour, y = avg_temp)) +
+  geom_line(color = "purple", linewidth = 1.2) +
+  geom_point(color = "purple", size = 2) +
+  scale_x_continuous(breaks = 0:23) +
+  labs(
+    title = "Average Diurnal Temperature Cycle at KLAX",
+    x = "Hour of Day",
+    y = "Average Temperature (°C)",
+    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
+  ) +
+  theme_capstone
+
+p_diurnal
+```
+
+
+:::
+
+
 
 ## Modeling and Results
 
@@ -132,9 +715,423 @@ ggplot1 = murders %>% ggplot(mapping = aes(x=population/10^6, y=total))
 
 -   **Tell a story about what the data reveals.**
 
-```{r}
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Create Time of Day Windows
+# =========================================================
 
+df_model_base <- df_all %>%
+  mutate(
+    date  = as.Date(timestamp),
+    hour  = hour(timestamp),
+    tod_window = case_when(
+      hour >= 0  & hour < 6  ~ "night",
+      hour >= 6  & hour < 11 ~ "morning",
+      TRUE                   ~ NA_character_  # everything else not used
+    )
+  )
+
+# =========================================================
+# Daily Highs
+# =========================================================
+
+daily_target <- df_model_base %>%
+  group_by(date) %>%
+  summarise(
+    daily_high_temp = max(temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    daily_high_temp = ifelse(is.infinite(daily_high_temp), NA_real_, daily_high_temp)
+  ) %>%
+  filter(!is.na(daily_high_temp)) %>%
+  arrange(date) %>%
+  mutate(
+    lag1_daily_high_temp = lag(daily_high_temp, 1)
+  )
+
+# =========================================================
+# Lagged Features
+# =========================================================
+
+safe_max <- function(x) {
+  if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+}
+
+safe_min <- function(x) {
+  if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+}
+
+safe_mean <- function(x) {
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}
+
+daily_prev_features <- df_model_base %>%
+  group_by(date) %>%
+  summarise(
+    temp_mean_day = safe_mean(temp),
+    temp_min_day  = safe_min(temp),
+    temp_sd_day   = sd(temp, na.rm = TRUE),
+    dew_mean_day  = safe_mean(dewpoint_c),
+    rh_mean_day   = safe_mean(rh_pct),
+    wind_mean_day = safe_mean(wind_speed_kt),
+    gust_max_day  = safe_max(wind_gust_kt),
+    vis_mean_day  = safe_mean(visibility_sm),
+    alt_mean_day  = safe_mean(altimeter_inhg),
+    .groups = "drop"
+  ) %>%
+  arrange(date) %>%
+  mutate(
+    lag1_temp_mean_day = lag(temp_mean_day, 1),
+    lag1_temp_min_day  = lag(temp_min_day, 1),
+    lag1_temp_sd_day   = lag(temp_sd_day, 1),
+    lag1_dew_mean_day  = lag(dew_mean_day, 1),
+    lag1_rh_mean_day   = lag(rh_mean_day, 1),
+    lag1_wind_mean_day = lag(wind_mean_day, 1),
+    lag1_gust_max_day  = lag(gust_max_day, 1),
+    lag1_vis_mean_day  = lag(vis_mean_day, 1),
+    lag1_alt_mean_day  = lag(alt_mean_day, 1),
+    lag1_alt_change    = lag(alt_mean_day, 1) - lag(alt_mean_day, 2)
+  ) %>%
+  select(date, starts_with("lag1_"))
+
+# =========================================================
+# Additional Features
+# =========================================================
+
+daily_window_features <- df_model_base %>%
+  group_by(date, tod_window) %>%
+  summarise(
+    temp_mean = safe_mean(temp),           
+    dew_mean  = safe_mean(dewpoint_c),
+    rh_mean   = safe_mean(rh_pct),
+    rh_min    = safe_min(rh_pct),
+    rh_max    = safe_max(rh_pct),
+    wind_mean = safe_mean(wind_speed_kt),
+    gust_max  = safe_max(wind_gust_kt),
+    vis_mean  = safe_mean(visibility_sm),
+    alt_mean  = safe_mean(altimeter_inhg),
+    .groups   = "drop"
+  ) %>%
+  mutate(
+    across(
+      -c(date, tod_window),
+      ~ ifelse(is.infinite(.x), NA_real_, .x)
+    )
+  ) %>%
+  pivot_wider(
+    names_from  = tod_window,
+    values_from = c(
+      temp_mean,
+      dew_mean, rh_mean, rh_min, rh_max,
+      wind_mean, gust_max, vis_mean, alt_mean
+    ),
+    names_glue  = "{.value}_{tod_window}"
+  ) %>%
+  select(!ends_with("_NA")) %>%
+  mutate(
+    rh_range_night_morning   = rh_max_morning   - rh_min_night,
+    temp_range_night_morning = temp_mean_morning - temp_mean_night,
+    wind_change_night_morning = wind_mean_morning - wind_mean_night,
+    alt_change_night_morning  = alt_mean_morning  - alt_mean_night
+  )
+
+# =========================================================
+# Prepare Model Data
+# =========================================================
+
+model_data <- daily_target %>%
+  left_join(daily_prev_features,   by = "date") %>%
+  left_join(daily_window_features, by = "date") %>%
+  mutate(
+    year  = year(date),
+    month = month(date),
+    doy   = yday(date),
+    doy2 = doy^2,
+    doy_sin = sin(2 * pi * doy / 365.25),
+    doy_cos = cos(2 * pi * doy / 365.25),
+    season = case_when(
+      month %in% c(12, 1, 2) ~ "winter",
+      month %in% c(3, 4, 5)  ~ "spring",
+      month %in% c(6, 7, 8)  ~ "summer",
+      TRUE                   ~ "fall"
+    )
+  ) %>%
+  arrange(date) %>%
+  filter(
+    !is.na(lag1_temp_mean_day),
+    !is.na(lag1_daily_high_temp)
+  ) %>%
+  mutate(
+    season = factor(season, levels = c("winter", "spring", "summer", "fall"))
+  )
+
+# Create season dummies (winter, spring, summer, fall)
+season_dummies <- model.matrix(~ season - 1, data = model_data)
+
+model_data <- bind_cols(
+  model_data,
+  as_tibble(season_dummies)
+)
+
+# =========================================================
+# Check Features
+# =========================================================
+
+feature_cols <- model_data %>%
+  select(-date, -daily_high_temp, -month, -season) %>%
+  select(where(is.numeric)) %>%                         
+  names()
+
+stopifnot(!"daily_high_temp" %in% feature_cols)
 ```
+
+```{r, results='hide', warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Model Training
+# =========================================================
+
+split_year <- 2018
+
+train_data <- model_data %>% filter(year <= split_year)
+valid_data <- model_data %>% filter(year > split_year)
+
+X_train <- as.matrix(train_data[, feature_cols])
+y_train <- train_data$daily_high_temp
+
+X_valid <- as.matrix(valid_data[, feature_cols])
+y_valid <- valid_data$daily_high_temp
+
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dvalid <- xgb.DMatrix(data = X_valid, label = y_valid)
+
+set.seed(42)
+
+params <- list(
+  objective = "reg:squarederror",
+  eta = 0.03,           
+  max_depth = 6,        
+  subsample = 0.8,
+  colsample_bytree = 0.8,
+  min_child_weight = 5,
+  nthread = parallel::detectCores() - 1
+)
+
+model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 800,
+  evals = list(train = dtrain, valid = dvalid),
+  early_stopping_rounds = 50,
+  print_every_n = 50,
+  verbose = 1
+)
+
+pred_valid <- predict(model, dvalid)
+```
+
+## Modeling and Results Continued - Metrics {.smaller}
+
+::: {.panel-tabset}
+
+### Regression Metrics
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Regression Metrics on Validation Set
+# =========================================================
+
+# Ensure numeric vectors
+y_actual <- as.numeric(y_valid)
+y_pred   <- as.numeric(pred_valid)
+
+# Residuals
+residuals <- y_actual - y_pred
+
+# MAE: Mean Absolute Error
+mae <- mean(abs(residuals), na.rm = TRUE)
+
+# MSE: Mean Squared Error
+mse <- mean(residuals^2, na.rm = TRUE)
+
+# RMSE: Root Mean Squared Error
+rmse <- sqrt(mse)
+
+# R^2: Coefficient of determination
+ss_res <- sum(residuals^2, na.rm = TRUE)
+ss_tot <- sum((y_actual - mean(y_actual, na.rm = TRUE))^2, na.rm = TRUE)
+r_squared <- 1 - ss_res / ss_tot
+
+# MAPE: Mean Absolute Percentage Error
+nonzero_idx <- which(y_actual != 0 & !is.na(y_actual) & !is.na(y_pred))
+mape <- mean(
+  abs((y_actual[nonzero_idx] - y_pred[nonzero_idx]) / y_actual[nonzero_idx]) * 100,
+  na.rm = TRUE
+)
+
+# Explained variance score
+var_actual <- var(y_actual, na.rm = TRUE)
+var_res    <- var(residuals, na.rm = TRUE)
+explained_variance <- 1 - var_res / var_actual
+
+
+metrics <- tibble(
+  Metric = c("MAE", "MSE", "RMSE", "R Squared", "MAPE %", "Explained Variance"),
+  Value  = c(mae, mse, rmse, r_squared, mape, explained_variance)
+)
+
+knitr::kable(
+  metrics,
+  caption = "Metric Results from XGBoost Model",
+  digits = 3
+)
+```
+
+
+### Interpretation
+
+- **MAE:** On average, the model’s predictions are off by about 0.87 °C. This means the model’s daily high forecast is typically within roughly 0.87 °C of the actual daily high temperature.
+
+- **MSE:** The average squared error is 1.609 °C². In practice, this suggests the model rarely produces daily high temperature forecasts that are abnormally higher or lower than the observed high for a given day.
+
+- **RMSE:** The typical prediction error is about 1.27 °C. For example, if the actual daily high temperature is 22 °C, the model will usually predict a daily high between about 20.73 °C and 23.27 °C.
+
+- $\mathbf{R^2}$**:** About 90.4% of the variability in temperature over time is explained by the model, indicating a strong fit and that most day‑to‑day fluctuations in temperature are captured by the predictors.
+
+- **MAPE:** On average, the forecasts are off by about 4.37% relative to the actual temperature value, implying that the model maintains good proportional accuracy across both cooler and warmer days.
+
+- **Explained Variance:** About 90.4% of the observed variation in temperature is accounted for by the model, reinforcing that it represents real‑world fluctuations well.
+
+:::
+
+
+## Modeling and Results Continued - Important Features {.smaller}
+
+::: {.panel-tabset}
+
+### Table - Top 10
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Model Feature Importance Table
+# =========================================================
+
+importance <- xgb.importance(
+  model = model,
+  feature_names = feature_cols
+)
+
+importance_tbl <- as_tibble(importance) %>%
+  arrange(desc(Gain)) %>%      
+  slice(1:10)
+
+knitr::kable(
+  importance_tbl,
+  caption = "Feature Importance Table",
+  digits = 3
+)
+```
+
+### Plot - Top 10
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Model Feature Importance Plot
+# =========================================================
+
+feature_importance_plot <- ggplot(
+  importance_tbl,
+  aes(x = reorder(Feature, Gain), y = Gain)
+) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  theme_capstone +              
+  labs(
+    title = "XGBoost Feature Importance (Top 10)",
+    x = "Feature",
+    y = "Gain"
+  )
+
+feature_importance_plot
+```
+
+
+### Interpretation
+
+- **Morning Mean Temperature:** The morning mean temperature (`temp_mean_morning`) has the highest gain at 0.553, indicating that early‑day, morning, 6-11 UTC, temperatures are the primary driver of accurate daily high temperature forecasts at KLAX.
+
+- **Temporal Persistence:** The importance of previous day’s high (`lag1_daily_high_temp`) and the previous day’s mean temperature (`lag1_temp_mean_day`) shows that yesterday’s temperature is persistent into today, which the model leverages.
+
+- **Humidity‑Related Variables:** The minimum morning relative humidity (`rh_min_morning`), mean morning relative humidity (`rh_mean_morning`), and mean morning dewpoint (`dew_mean_morning`) all contribute meaningfully to the model, suggesting that moisture conditions play a notable role in the day’s maximum temperature.
+
+- **Night‑to‑Morning Ranges:** The mean night temperature (`temp_mean_night`) and the temperature change between the mean of the morning and the mean of night (`temp_range_night_morning`) capture how the night time cooling and subsequent morning warming can effect the day’s temperatures, contributing additional explanatory power.
+
+- **Seasonal and Wind Driven Signals:** The transformed version of the calendar day (`doy_cos`) helps capture the seasonal cycle and helps the model understand how typical temperatures change throughout the year. The mean wind speed from the previous day (`lag1_wind_mean_day`) allows the model to account for recent wind conditions that can carry warmer or cooler air into the area and influence today’s temperature.
+
+:::
+
+
+## Modeling and Results Continued - Diagnostics {.smaller}
+
+::: {.panel-tabset}
+
+### Predicted vs. Actual Daily Highs
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Validation Diagnostics Data
+# =========================================================
+
+valid_diag <- valid_data %>%
+  mutate(
+    actual_high = as.numeric(y_valid),
+    pred_high   = as.numeric(pred_valid),
+    residual    = actual_high - pred_high
+  )
+
+# =========================================================
+# Predicted vs Actual Daily Highs
+# =========================================================
+
+plot_pred_vs_actual <- ggplot(valid_diag, aes(x = pred_high, y = actual_high)) +
+  geom_point(alpha = 0.4, color = "steelblue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(
+    title    = "Predicted vs Actual Daily High Temperature",
+    subtitle = "Validation period 2019-2026",
+    x        = "Predicted daily high (°C)",
+    y        = "Actual daily high (°C)"
+  ) +
+  theme_capstone
+
+plot_pred_vs_actual
+```
+
+
+### Residuals vs. Actual Daily Highs
+
+```{r, warning=FALSE, echo=F, message=FALSE}
+# =========================================================
+# Residuals vs Actual Temperature
+# =========================================================
+
+plot_resid_vs_actual <- ggplot(valid_diag, aes(x = actual_high, y = residual)) +
+  geom_hline(yintercept = 0, color = "grey50") +
+  geom_point(alpha = 0.4, color = "seagreen") +
+  labs(
+    title    = "Residuals vs Actual Daily High (Validation)",
+    subtitle = "Check error structure across temperature range",
+    x        = "Actual daily high (°C)",
+    y        = "Residual (°C)"
+  ) +
+  theme_capstone
+
+plot_resid_vs_actual
+```
+
+
+:::
+
 
 ## Conclusion
 
