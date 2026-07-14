@@ -64,7 +64,7 @@ editor:
   - Handles missing values from sensor malfunctions without imputation.
 
 
-## Methods Continued {.smaller}
+## Methods Continued {.smaller .scrollable}
 
 -   Prediction is the sum of many boosted regression trees.
 
@@ -306,7 +306,7 @@ theme_capstone <- theme_minimal() +
   )
 ```
 
-## Descriptive Statistics {.smaller}
+## Descriptive Statistics {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -408,13 +408,13 @@ summary_stats <- tibble(
 knitr::kable(
   summary_stats %>% select(Statistic, Value),
   caption = "Summary statistics for 5-minute temperature changes at KLAX, 2000-2026."
-)
+) 
 ```
 
 :::
 
 
-## Visualizations and Insights {.smaller}
+## Visualizations and Insights {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -527,7 +527,7 @@ p_daily_high_ranges
 :::
 
 
-## Visualizations and Insights Continued {.smaller}
+## Visualizations and Insights Continued {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -612,7 +612,7 @@ p_non_zero_hist
 :::
 
 
-## Visualizations and Insights Continued {.smaller}
+## Visualizations and Insights Continued {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -930,7 +930,7 @@ model <- xgb.train(
 pred_valid <- predict(model, dvalid)
 ```
 
-## Modeling and Results Continued - Metrics {.smaller}
+## Modeling and Results - Metrics {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -1005,7 +1005,7 @@ knitr::kable(
 :::
 
 
-## Modeling and Results Continued - Important Features {.smaller}
+## Modeling and Results - Important Features {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
@@ -1071,7 +1071,7 @@ feature_importance_plot
 :::
 
 
-## Modeling and Results Continued - Diagnostics {.smaller}
+## Modeling and Results - Diagnostics {.smaller .scrollable}
 
 ::: {.panel-tabset}
 
