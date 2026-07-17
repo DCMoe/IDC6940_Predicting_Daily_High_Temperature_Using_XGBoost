@@ -51,7 +51,7 @@ editor:
 - **Metrics:** Performance is evaluated using MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, and feature importance is analyzed to interpret the model [@Zhou_2023; @Singh2023MachineLF; @xgboost_tutorial].
 
 
-## Methods
+## Methods {.smaller}
 
 - **Target:** Daily maximum air temperature, $T_{max}$, at KLAX
 
@@ -64,7 +64,7 @@ editor:
   - Handles missing values from sensor malfunctions without imputation.
 
 
-## Methods Continued {.smaller .scrollable}
+## Methods Continued {.smaller}
 
 -   Prediction is the sum of many boosted regression trees [@Chen_2016].
 
