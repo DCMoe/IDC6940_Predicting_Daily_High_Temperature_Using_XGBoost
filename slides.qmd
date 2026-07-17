@@ -1,5 +1,5 @@
 ---
-title: "Predicting Daily High Temperature Using XGBoost - Summer 2026 "
+title: "Predicting Daily High Temperature Using XGBoost"
 subtitle: "Los Angeles International Airport (KLAX)"
 author: 
   - name: "Alex Lewis"
@@ -40,22 +40,22 @@ editor:
 
 ## Introduction Continued {.smaller}
 
-- Dataset: National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]
+- **Dataset:** National Oceanic and Atmospheric Administration (NOAA) Automated Surface Observing System (ASOS) [@asos_dataset_noaa]
 
   - Location: Los Angeles International Airport (KLAX) station
   
   - 5-minute interval weather measurements 
 
-- Method: An XGBoost regression model is developed to predict daily high temperature [@Chen_2016].
+- **Method:** An XGBoost regression model is developed to predict daily high temperature [@Chen_2016].
 
-- Performance is evaluated using MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, and feature importance is analyzed to interpret the model [@Zhou_2023; @Singh2023MachineLF; @xgboost_tutorial].
+- **Metrics:** Performance is evaluated using MAE, MSE, RMSE, $R^2$, MAPE, and explained variance, and feature importance is analyzed to interpret the model [@Zhou_2023; @Singh2023MachineLF; @xgboost_tutorial].
 
 
 ## Methods
 
-- Target: Daily maximum air temperature, $T_{max}$, at KLAX
+- **Target:** Daily maximum air temperature, $T_{max}$, at KLAX
 
-- Model: XGBoost regression trees
+- **Model:** XGBoost regression trees
 
 - XGBoost is well suited for tabular meteorological data:
 
@@ -66,7 +66,7 @@ editor:
 
 ## Methods Continued {.smaller .scrollable}
 
--   Prediction is the sum of many boosted regression trees.
+-   Prediction is the sum of many boosted regression trees [@Chen_2016].
 
 $$
 \hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F} \tag{1}
@@ -82,8 +82,6 @@ $$
 
 - The loss term measures prediction error, while the penalty term discourages overly complex trees.
 
-\* *XGBoost Model [@Chen_2016]*
-
 
 ## Data Exploration and Visualization
 
@@ -92,6 +90,7 @@ $$
 -   Present initial findings and insights through visualizations.
 
 -   Highlight unexpected patterns or anomalies.
+
 
 ## Data Exploration and Visualization {.smaller}
 
@@ -306,115 +305,8 @@ theme_capstone <- theme_minimal() +
   )
 ```
 
-## Descriptive Statistics {.smaller .scrollable}
 
-::: {.panel-tabset}
-
-### Key Variables
-
-```{r, warning=FALSE, echo=FALSE}
-continuous_summary <- bind_rows(
-  make_descriptive_row(df_full, "wind_speed_kt", "Wind speed (kt)"),
-  make_descriptive_row(df_full, "wind_gust_kt", "Wind gust (kt)"),
-  make_descriptive_row(df_full, "visibility_sm", "Visibility (statute mi)"),
-  make_descriptive_row(df_full, "temp", "Air temperature (°C)"),
-  make_descriptive_row(df_full, "dewpoint_c", "Dewpoint temperature (°C)"),
-  make_descriptive_row(df_full, "rh_pct", "Relative humidity (%)"),
-  make_descriptive_row(df_full, "altimeter_inhg", "Altimeter (inHg)")
-)
-
-knitr::kable(
-  continuous_summary,
-  caption = "Descriptive statistics for KLAX 5-minute variables, 2000–2026.",
-  digits = 2
-)
-```
-
-### Wind Groups
-
-```{r, warning=FALSE, echo=FALSE}
-temp_by_wind_summary <- df_all %>%
-  filter(!is.na(wind_group), !is.na(temp)) %>%
-  group_by(wind_group) %>%
-  summarise(
-    N = sum(!is.na(temp)),
-    Mean = mean(temp, na.rm = TRUE),
-    SD = sd(temp, na.rm = TRUE),
-    Q1 = quantile(temp, 0.25, na.rm = TRUE),
-    Median = median(temp, na.rm = TRUE),
-    Q3 = quantile(temp, 0.75, na.rm = TRUE),
-    Min = min(temp, na.rm = TRUE),
-    Max = max(temp, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-names(temp_by_wind_summary) <- "Wind Group"[1]
-
-knitr::kable(
-  temp_by_wind_summary,
-  caption = "Descriptive statistics for air temperature grouped by east-wind and west-wind observations at KLAX, 2000-2026.",
-  digits = 2
-)
-```
-
-### 5-Minute Temperature Change
-
-```{r, warning=FALSE, echo=F, message=FALSE}
-abs_q <- quantile(
-  df_5min_change_all$abs_temp_change_5min,
-  probs = c(0.5, 0.75, 0.9, 0.95, 0.99, 1.0),
-  na.rm = TRUE
-)
-
-abnormal_threshold <- abs_q["99%"]
-
-df_5min_change_all <- df_5min_change_all %>%
-  mutate(abnormal_change = abs_temp_change_5min > abnormal_threshold)
-
-summary_stats <- tibble(
-  Statistic = c(
-    "Total observations",
-    "Mean absolute 5-minute change (°C)",
-    "Median absolute 5-minute change (°C)",
-    "75th percentile (°C)",
-    "90th percentile (°C)",
-    "95th percentile (°C)",
-    "99th percentile (°C) [abnormal threshold]",
-    "Maximum absolute 5-minute change (°C)",
-    "Number of abnormal changes",
-    "Percentage of abnormal changes (%)"
-  ),
-  Value_raw = c(
-    nrow(df_5min_change_all),
-    mean(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
-    median(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
-    abs_q["75%"],
-    abs_q["90%"],
-    abs_q["95%"],
-    abs_q["99%"],
-    max(df_5min_change_all$abs_temp_change_5min, na.rm = TRUE),
-    sum(df_5min_change_all$abnormal_change, na.rm = TRUE),
-    100 * mean(df_5min_change_all$abnormal_change, na.rm = TRUE)
-  )
-) %>%
-  mutate(
-    Value = case_when(
-      Statistic %in% c("Total observations", "Number of abnormal changes") ~ comma(Value_raw, accuracy = 1),
-      Statistic == "Percentage of abnormal changes (%)" ~ number(Value_raw, accuracy = 0.01),
-      TRUE ~ number(Value_raw, accuracy = 0.01)
-    )
-  )
-
-knitr::kable(
-  summary_stats %>% select(Statistic, Value),
-  caption = "Summary statistics for 5-minute temperature changes at KLAX, 2000-2026."
-) 
-```
-
-:::
-
-
-## Visualizations and Insights {.smaller .scrollable}
+## Visualizations and Insights {.smaller}
 
 ::: {.panel-tabset}
 
@@ -527,7 +419,7 @@ p_daily_high_ranges
 :::
 
 
-## Visualizations and Insights Continued {.smaller .scrollable}
+## Visualizations and Insights Continued {.smaller}
 
 ::: {.panel-tabset}
 
@@ -549,94 +441,6 @@ p_hist_daily <- ggplot(daily_high, aes(x = daily_high_temp)) +
   theme_capstone
 
 p_hist_daily
-```
-
-
-### 5-Minute Temp Changes
-
-```{r, warning=FALSE, echo=F, message=FALSE}
-# =========================================================
-# 5-Minute Temp Change All Plot
-# =========================================================
-
-p_hist_change <- ggplot(df_5min_change_all, aes(x = temp_change_5min)) +
-  geom_histogram(
-    binwidth = 0.1,
-    fill = "steelblue",
-    color = "white",
-    alpha = 0.8
-  ) +
-  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
-  coord_cartesian(xlim = c(-3, 3)) +
-  labs(
-    title = "Histogram of 5-Minute Temperature Changes at KLAX",
-    subtitle = sprintf("Proportion of exact zero changes: %.1f%%", 100 * prop_zero),
-    x = "5-Minute Temperature Change (°C)",
-    y = "Frequency",
-    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
-  ) +
-  theme_capstone
-
-p_hist_change
-```
-
-
-### 5-Minute Temp Changes Non-Zero
-
-```{r, warning=FALSE, echo=F, message=FALSE}
-# =========================================================
-# 5-Minute Temp Change Excluding Zeros Plot
-# =========================================================
-
-p_non_zero_hist <- ggplot(nonzero_changes, aes(x = temp_change_5min)) +
-  geom_histogram(
-    binwidth = 0.1,
-    fill = "darkorange",
-    color = "white",
-    alpha = 0.8
-  ) +
-  scale_x_continuous(breaks = seq(-2.5, 2.5, by = 0.5)) +
-  coord_cartesian(xlim = c(-3, 3)) +
-  labs(
-    title = "Histogram of Non-Zero 5-Minute Temperature Changes at KLAX",
-    x = "5-Minute Temperature Change (°C)",
-    y = "Frequency",
-    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
-  ) +
-  theme_capstone
-
-p_non_zero_hist
-```
-
-
-:::
-
-
-## Visualizations and Insights Continued {.smaller .scrollable}
-
-::: {.panel-tabset}
-
-### 3-Hour Temp Change
-
-```{r, warning=FALSE, echo=F, message=FALSE}
-# =========================================================
-# 3-hour Temp Changes Histogram
-# =========================================================
-
-p_3h_temp_change <- ggplot(df_3h_change_all, aes(x = temp_change_3h)) +
-  geom_histogram(binwidth = 1, boundary = 0, fill = "steelblue", colour = "white") +
-  scale_x_continuous(breaks = seq(-10, 10, by = 2)) +
-  coord_cartesian(xlim = c(-10, 10)) +
-  scale_y_continuous(labels = scales::comma) +
-  labs(
-    title = "Histogram of 3-Hour Temperature Changes at KLAX",
-    x = "Temperature Change over 3 Hours (°C)",
-    y = "Number of 3-Hour Periods",
-    caption = "Source: NOAA ASOS 5-minute data, KLAX station"
-  ) +
-  theme_capstone
-
-p_3h_temp_change
 ```
 
 
@@ -705,15 +509,67 @@ p_diurnal
 
 
 
-## Modeling and Results
+## Modeling and Results {.smaller}
+### Preprocessing 
 
--   Explain your data preprocessing and cleaning steps.
+- **Raw input:** KLAX 5-minute ASOS observations from 2000–2026, including temperature, dewpoint, humidity, wind, visibility, and altimeter pressure.
 
--   Present your key findings in a clear and concise manner.
+- **Sorting:** Sorted chronologically to preserve temporal order for training and evaluation.
 
--   Use visuals to support your claims.
+- **Sensor errors:** Checking for sensor errors or anomalies.
 
--   **Tell a story about what the data reveals.**
+  - Visibility values above 10 statute miles were capped because ASOS visibility is reported as 10SM when visibility is 10 miles or greater.
+  
+  - Wind gusts above 100 kt were removed as implausible extremes relative to the study objective.
+
+- **Missing-values:** Infinite values were relabeled as missing rather than imputed, given XGBoost’s native handling of missing values in tree models.
+
+
+## Modeling and Results {.smaller}
+### Feature Engineering 
+
+- **Target:** Daily high temperature defined as the maximum 5-minute temperature within each calendar day.
+
+- **Lagged features:** Previous-day high temperature, along side daily summary statistics such as mean, minimum, and standard deviation were created to capture persistence.
+
+- **Same-day forecasting window:** Only observations prior to 11:00 A.M. were used so the model relies on information available before the typical high time window.
+
+- **Night vs. morning windows:** Separate 0–6 A.M. and 6–11 A.M. feature windows captured overnight conditions and morning atmospheric change.
+
+- **Seasonality features:** Year, month, day-of-year terms, sinusoidal seasonality, and seasonal indicators helped the model represent annual structure.
+
+
+## Modeling and Results {.smaller}
+### XGBoost
+
+::: {.panel-tabset}
+
+### Model Choice
+
+- **Model:** XGBoost regression - captures nonlinear relationships and interactions common in meteorological data, while also handling missing values natively.
+
+- **Dataset Split:** The dataset was split by year. There are a total of 9,336 daily high target observations.
+
+  - **Train Split:** 2000–2018, consists of 6,800 (72.84%) observations
+  
+  - **Evaluation Split:** 2019–2026, consists of 2,536 (27.16%) observations 
+
+- **Model Parameters:** Small learning rate and 800 boosting rounds allowed gradual learning.
+
+
+### Model Parameters
+
+| Hyperparameter                | Value               |
+| -------------------           | ----------------    |
+| Objective Function            | `Squared Error`     |
+| Learning Rate                 | `0.03`              |
+| Subsample of Rows             | `0.8`               |
+| Subsample of Columns          | `0.8`               |
+| Minimum Child Weight          | `5`                 |
+| Number of Rounds              | `800`               |
+| Early Stopping                | `50`                |
+
+:::
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
 # =========================================================
@@ -930,11 +786,9 @@ model <- xgb.train(
 pred_valid <- predict(model, dvalid)
 ```
 
-## Modeling and Results - Metrics {.smaller .scrollable}
+## Modeling and Results {.smaller}
+### Metrics 
 
-::: {.panel-tabset}
-
-### Regression Metrics
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
 # =========================================================
@@ -988,34 +842,13 @@ knitr::kable(
 ```
 
 
-### Interpretation
-
-- **MAE:** On average, the model’s predictions are off by about 0.87 °C. This means the model’s daily high forecast is typically within roughly 0.87 °C of the actual daily high temperature.
-
-- **MSE:** The average squared error is 1.609 °C². In practice, this suggests the model rarely produces daily high temperature forecasts that are abnormally higher or lower than the observed high for a given day.
-
-- **RMSE:** The typical prediction error is about 1.27 °C. For example, if the actual daily high temperature is 22 °C, the model will usually predict a daily high between about 20.73 °C and 23.27 °C.
-
-- $\mathbf{R^2}$**:** About 90.4% of the variability in temperature over time is explained by the model, indicating a strong fit and that most day‑to‑day fluctuations in temperature are captured by the predictors.
-
-- **MAPE:** On average, the forecasts are off by about 4.37% relative to the actual temperature value, implying that the model maintains good proportional accuracy across both cooler and warmer days.
-
-- **Explained Variance:** About 90.4% of the observed variation in temperature is accounted for by the model, reinforcing that it represents real‑world fluctuations well.
-
-:::
-
-
-## Modeling and Results - Important Features {.smaller .scrollable}
-
-::: {.panel-tabset}
-
-### Table - Top 10
+## Modeling and Results {.smaller}
+### Featrue Importance 
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
 # =========================================================
-# Model Feature Importance Table
+# Model Feature Importance Plot
 # =========================================================
-
 importance <- xgb.importance(
   model = model,
   feature_names = feature_cols
@@ -1024,20 +857,6 @@ importance <- xgb.importance(
 importance_tbl <- as_tibble(importance) %>%
   arrange(desc(Gain)) %>%      
   slice(1:10)
-
-knitr::kable(
-  importance_tbl,
-  caption = "Feature Importance Table",
-  digits = 3
-)
-```
-
-### Plot - Top 10
-
-```{r, warning=FALSE, echo=F, message=FALSE}
-# =========================================================
-# Model Feature Importance Plot
-# =========================================================
 
 feature_importance_plot <- ggplot(
   importance_tbl,
@@ -1056,22 +875,8 @@ feature_importance_plot
 ```
 
 
-### Interpretation
-
-- **Morning Mean Temperature:** The morning mean temperature (`temp_mean_morning`) has the highest gain at 0.553, indicating that early‑day, morning, 6-11 UTC, temperatures are the primary driver of accurate daily high temperature forecasts at KLAX.
-
-- **Temporal Persistence:** The importance of previous day’s high (`lag1_daily_high_temp`) and the previous day’s mean temperature (`lag1_temp_mean_day`) shows that yesterday’s temperature is persistent into today, which the model leverages.
-
-- **Humidity‑Related Variables:** The minimum morning relative humidity (`rh_min_morning`), mean morning relative humidity (`rh_mean_morning`), and mean morning dewpoint (`dew_mean_morning`) all contribute meaningfully to the model, suggesting that moisture conditions play a notable role in the day’s maximum temperature.
-
-- **Night‑to‑Morning Ranges:** The mean night temperature (`temp_mean_night`) and the temperature change between the mean of the morning and the mean of night (`temp_range_night_morning`) capture how the night time cooling and subsequent morning warming can effect the day’s temperatures, contributing additional explanatory power.
-
-- **Seasonal and Wind Driven Signals:** The transformed version of the calendar day (`doy_cos`) helps capture the seasonal cycle and helps the model understand how typical temperatures change throughout the year. The mean wind speed from the previous day (`lag1_wind_mean_day`) allows the model to account for recent wind conditions that can carry warmer or cooler air into the area and influence today’s temperature.
-
-:::
-
-
-## Modeling and Results - Diagnostics {.smaller .scrollable}
+## Modeling and Results {.smaller}
+### Diagnostics 
 
 ::: {.panel-tabset}
 
@@ -1133,10 +938,16 @@ plot_resid_vs_actual
 :::
 
 
-## Conclusion
+## Conclusion {.smaller}
 
--   Summarize your key findings.
+- XGBoost predicted KLAX daily highs with high accuracy, usually within about 1 °C.
 
--   Discuss the implications of your results.
+- The model captured most of the day-to-day temperature variability.
+
+- Morning weather, previous-day highs, humidity, and wind were the most useful predictors.
+
+- The model performed best on typical days and struggled more on very hot or very cold days.
+
+- Adding large-scale weather patterns could improve predictions for extreme events.
 
 ## References

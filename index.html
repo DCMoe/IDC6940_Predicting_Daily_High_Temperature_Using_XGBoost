@@ -9,9 +9,9 @@
 <meta name="author" content="Alex Lewis">
 <meta name="author" content="David Moe">
 <meta name="author" content="Advisor: Dr. Cohen">
-<meta name="dcterms.date" content="2026-07-14">
+<meta name="dcterms.date" content="2026-07-17">
 
-<title>Predicting Daily High Temperature Using XGBoost - Summer 2026</title>
+<title>Predicting Daily High Temperature Using XGBoost</title>
 <style>
 
 code{white-space: pre-wrap;}
@@ -2369,7 +2369,7 @@ window.Quarto = {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Predicting Daily High Temperature Using XGBoost - Summer 2026</h1>
+<h1 class="title">Predicting Daily High Temperature Using XGBoost</h1>
 <p class="subtitle lead">Los Angeles International Airport (KLAX)</p>
 </div>
 
@@ -2389,7 +2389,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">July 14, 2026</p>
+      <p class="date">July 17, 2026</p>
     </div>
   </div>
   
@@ -3826,8 +3826,8 @@ Figure 10: Multi-variable 5-minute meteorological observations at KLAX from Jul
 </section>
 <section id="xgboost-model" class="level4">
 <h4 class="anchored" data-anchor-id="xgboost-model">XGBoost Model</h4>
-<p>Now that the dataset has been preprocessed and the new features created, we prepare for the training and testing of the XGBoost model. There are a total 9,336 observations. The data is split into a train split which is used exclusively for training the model, and a test split which is reserved exclusively for validation of the model and is not used in training. The train split consists of all observations from 2000-2018, for a total of 6,800 observations, or 72.84%. The test split contains all observations from 2019-2026, for a total of 2,536 observations, or 27.16%.</p>
-<p>As previously mentioned, and XGBoost regression model is chosen for it’s ability to handle non-linear relationships and interactions between meteorological variables, along with the ability to handle missing data without the need for imputation. The XGBoost model is constructed with the following hyperparameters:</p>
+<p>Now that the dataset has been preprocessed and the new features created, we prepare for the training and testing of the XGBoost model. There are a total 9,336 observations. The data is split into a training split which is used exclusively for training the model, and a testing split which is reserved exclusively for evaluation of the model and is not used in training. The training split consists of all observations from 2000-2018, for a total of 6,800 observations, or 72.84%. The testing split contains all observations from 2019-2026, for a total of 2,536 observations, or 27.16%.</p>
+<p>As previously mentioned, an XGBoost regression model is chosen for its ability to handle non-linear relationships and interactions between meteorological variables, along with the ability to handle missing data without the need for imputation. The XGBoost model is constructed with the following hyperparameters:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">

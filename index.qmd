@@ -1,5 +1,5 @@
 ---
-title: "Predicting Daily High Temperature Using XGBoost - Summer 2026 "
+title: "Predicting Daily High Temperature Using XGBoost"
 subtitle: "Los Angeles International Airport (KLAX)"
 author: 
   - name: "Alex Lewis"
@@ -1137,11 +1137,11 @@ stopifnot(!"daily_high_temp" %in% feature_cols)
 
 Now that the dataset has been preprocessed and the new features created, we prepare for the training and testing of the XGBoost model.
 There are a total 9,336 observations.
-The data is split into a train split which is used exclusively for training the model, and a test split which is reserved exclusively for validation of the model and is not used in training.
-The train split consists of all observations from 2000-2018, for a total of 6,800 observations, or 72.84%.
-The test split contains all observations from 2019-2026, for a total of 2,536 observations, or 27.16%. 
+The data is split into a training split which is used exclusively for training the model, and a testing split which is reserved exclusively for evaluation of the model and is not used in training.
+The training split consists of all observations from 2000-2018, for a total of 6,800 observations, or 72.84%.
+The testing split contains all observations from 2019-2026, for a total of 2,536 observations, or 27.16%. 
 
-As previously mentioned, and XGBoost regression model is chosen for it's ability to handle non-linear relationships and interactions between meteorological variables, along with the ability to handle missing data without the need for imputation.
+As previously mentioned, an XGBoost regression model is chosen for its ability to handle non-linear relationships and interactions between meteorological variables, along with the ability to handle missing data without the need for imputation.
 The XGBoost model is constructed with the following hyperparameters:
 
 | Hyperparameter                | Value               |
