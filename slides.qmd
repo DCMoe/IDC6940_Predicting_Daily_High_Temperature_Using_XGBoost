@@ -519,7 +519,6 @@ p_diurnal
 :::
 
 
-
 ## Modeling and Results {.smaller}
 ### Preprocessing 
 
@@ -960,5 +959,6 @@ plot_resid_vs_actual
 - The model performed best on typical days and struggled more on very hot or very cold days.
 
 - Adding large-scale weather patterns could improve predictions for extreme events.
+
 
 ## References
