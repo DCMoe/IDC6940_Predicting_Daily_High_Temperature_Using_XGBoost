@@ -444,7 +444,7 @@
   <meta name="author" content="Alex Lewis">
   <meta name="author" content="David Moe">
   <meta name="author" content="Advisor: Dr. Cohen">
-  <meta name="dcterms.date" content="2026-07-17">
+  <meta name="dcterms.date" content="2026-07-19">
   <title>Predicting Daily High Temperature Using XGBoost</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1030,7 +1030,7 @@ Advisor: Dr. Cohen
 </div>
 </div>
 
-  <p class="date">2026-07-17</p>
+  <p class="date">2026-07-19</p>
 </section>
 <section id="introduction" class="slide level2 smaller">
 <h2>Introduction</h2>
@@ -1081,8 +1081,7 @@ Advisor: Dr. Cohen
 \hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F} \tag{1}
 \]</span></p>
 <ul>
-<li><p>Each tree contributes part of the final temperature prediction.</p></li>
-<li><p>The model is trained to balance fit and complexity through regularization.</p></li>
+<li>The model is trained to balance fit and complexity through regularization.</li>
 </ul>
 <p><span class="math display">\[
 \mathcal{L} = \sum_{i} l(\hat{y}_i, y_i) + \sum_{k=1}^{K} \left[ \gamma T_k + \tfrac{1}{2}\lambda \lVert w_k \rVert^2 \right] \tag{2}
@@ -1091,17 +1090,26 @@ Advisor: Dr. Cohen
 <li>The loss term measures prediction error, while the penalty term discourages overly complex trees.</li>
 </ul>
 </section>
-<section id="data-exploration-and-visualization" class="slide level2">
+<section id="data-exploration-and-visualization" class="slide level2 smaller">
 <h2>Data Exploration and Visualization</h2>
+<h3 id="data-source">Data Source</h3>
 <ul>
-<li><p>Describe your data sources and collection process.</p></li>
-<li><p>Present initial findings and insights through visualizations.</p></li>
-<li><p>Highlight unexpected patterns or anomalies.</p></li>
+<li><p>Obtained from National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network <span class="citation" data-cites="asos_dataset_noaa">(<a href="#/references" role="doc-biblioref" onclick>Environmental Information (NCEI) 2026</a>)</span></p></li>
+<li><p>ASOS is the primary U.S. airport-based surface weather observing network and provides continuous meteorological observations</p></li>
+<li><p>This study uses the Los Angeles International Airport (KLAX) station</p></li>
+<li><p>Observations were recorded at 5-minute intervals</p></li>
+<li><p><strong>Study period:</strong> January 1, 2000 to June 7, 2026, covering more than 26 years of records</p></li>
 </ul>
 </section>
 <section id="data-exploration-and-visualization-1" class="slide level2 smaller">
 <h2>Data Exploration and Visualization</h2>
-<p>A study was conducted to determine how…</p>
+<h3 id="dataset-structure">Dataset Structure</h3>
+<ul>
+<li><p>Dataset contains 2,523,612 total 5-minute observations from KLAX</p></li>
+<li><p>Variables include Wind direction, wind speed, wind gust, visibility, temperature, dew point, relative humidity, and altimeter pressure</p></li>
+<li><p>The modeling target is daily high temperature</p></li>
+<li><p>Final target series contains 9,336 daily high-temperature values</p></li>
+</ul>
 </section>
 <section id="visualizations-and-insights" class="slide level2 smaller">
 <h2>Visualizations and Insights</h2>

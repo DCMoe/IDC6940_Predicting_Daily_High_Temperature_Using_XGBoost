@@ -28,7 +28,7 @@ to edit)
 
 The accurate prediction of daily high temperatures is an important component of modern weather forecasting.
 It influences decision-making across various market sectors such as energy management, transportation, and public safety. 
-By obtaining reliable temperature forecasts, resource can be efficiently allocated in areas such as electricity demand planning and climate-sensitive operations in aviation and infrastructure. 
+By obtaining reliable temperature forecasts, resources can be efficiently allocated in areas such as electricity demand planning and climate-sensitive operations in aviation and infrastructure. 
 In recent years, advances in data-driven modeling have improved upon traditional numerical weather prediction methods, offering improved accuracy and adaptability for localized forecasting tasks [@WANG2023101499]. 
 Machine learning techniques, in particular ensemble methods, have demonstrated strong performance in capturing nonlinear and interaction relationships within meteorological data [@Airlangga_2025]. 
 Among these, Extreme Gradient Boosting (XGBoost) has emerged as a powerful and efficient algorithm for predictive modeling in structured datasets [@Chen_2016].
@@ -36,7 +36,7 @@ Among these, Extreme Gradient Boosting (XGBoost) has emerged as a powerful and e
 Recent research has been exploring the use of various machine learning techniques to enhance weather prediction accuracy, particularly in short-term forecasting applications. 
 Ensemble learning methods such as XGBoost have been shown to outperform traditional statistical models and complement numerical weather prediction systems by effectively capturing nonlinear relationships and correcting systematic biases [@DONG2023105579]. 
 Prior studies have applied XGBoost to tasks such as precipitation forecasting and bias correction of meteorological outputs, demonstrating improved predictive performance across diverse geographic regions [@DONG2023105579]. 
-Additionally, a comparative analyses of machine learning algorithms highlights the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023; @Singh2023MachineLF; @Airlangga_2025]. 
+Additionally, a comparative analysis of machine learning algorithms highlights the robustness and computational efficiency of gradient boosting approaches when applied to structured environmental data [@Zhou_2023; @Singh2023MachineLF; @Airlangga_2025]. 
 Despite these advances, many studies focus on regional or large-scale forecasting problems, leaving opportunities for more localized, site-specific modeling of daily temperature using high-frequency observational data. 
 XGBoost has also been documented in tutorial and use-case contexts for its implementation and interpretability in applied machine learning problems [@xgboost_tutorial].
 
@@ -577,7 +577,7 @@ save_plot(p_boxplot, "fig_boxplot.png")
 @fig-daily-high-ranges shows the same distributional and seasonal patterns at the daily resolution, with mean daily highs climbing steadily from February into late summer, peaking in early September, and then declining through autumn into December. 
 Much like @fig-monthly-boxplot, the shaded band (interquartile range) and dashed lines (minimum and maximum) highlight a wider spread between the daily minimum and maximum during the cooler winter season. 
 This pattern indicates that although median high temperatures are greater in late summer, individual winter days exhibit larger variability. 
-Individual days in the warmer months, however, still exhibit more frequent extremes than days in the warmer months.
+Individual days in warmer months, however, still exhibit more frequent high temperature extremes than days in the colder months.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-daily-high-ranges
@@ -686,7 +686,7 @@ save_plot(p_hist_change, "fig_5min_temp_change_hist.png")
 ```
 
 To address this obfuscation, the following non-zero histogram in @fig-temp-change-nonzero provides a better look at the remaining 5-minute temperature distribution.
-This table confirms that even when changes occur, most changes are small in magnitude and continue to cluster tightly around zero.
+This figure confirms that even when changes occur, most changes are small in magnitude and continue to cluster tightly around zero.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-temp-change-nonzero
@@ -744,9 +744,9 @@ save_plot(p_3h_temp_change, "fig_3h_temp_change.png")
 ```
 
 @fig-3h-wind-change compares the 3-hour temperature changes after gusts from both east and west, or onshore versus offshore gusts.
-As previously discussed, average temperatures tend be higher during periods when west winds are present.
+As previously discussed, average temperatures tend to be higher during periods when west winds are present.
 However, this does not imply that west winds and gusts do not provide a cooling effect.
-As seen in @fig-3h-wind-change, Westerly gusts from offshore provide both a more frequent and stronger cooling effect than easterly gusts from onshore.
+As seen in @fig-3h-wind-change, westerly gusts from offshore provide both a more frequent and stronger cooling effect than easterly gusts from onshore.
 
 ```{r, warning=FALSE, message=FALSE}
 #| label: fig-3h-wind-change
@@ -930,8 +930,8 @@ Taken together, the data exploration stage not only describes the structure of t
 #### Data Preprocessing
 
 To prepare the model for training and testing, we begin with the original dataset that consists of 5‑minute ASOS observations at KLAX from 2000–2026, including temperature, dewpoint, humidity, winds, visibility, and altimeter pressure.
-The timestamps are set to UTC to ensure a standardized timezone for all modeling and evaluations.
-The variables are also arranged chronologically using the timestamps to ensure they maintain the temporal structure.
+Although the ASOS five-minute data files nominally label timestamps as UTC, observations are recorded in local standard time; all windows and cutoffs in this study therefore correspond to local time at KLAX. 
+The variables are arranged chronologically using the timestamps to ensure they maintain the temporal structure.
 
 A few variables had identifiable erroneous sensor values. 
 For visibility, the max value was capped at 10 statute miles as this is the limit for the sensors.

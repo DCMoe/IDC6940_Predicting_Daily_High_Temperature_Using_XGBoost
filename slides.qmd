@@ -72,8 +72,6 @@ $$
 \hat{y}_i = \sum_{k=1}^{K} f_k(\mathbf{x}_i), \qquad f_k \in \mathcal{F} \tag{1}
 $$
 
-- Each tree contributes part of the final temperature prediction.
-
 - The model is trained to balance fit and complexity through regularization.
 
 $$
@@ -83,18 +81,31 @@ $$
 - The loss term measures prediction error, while the penalty term discourages overly complex trees.
 
 
-## Data Exploration and Visualization
+## Data Exploration and Visualization {.smaller}
+### Data Source
 
--   Describe your data sources and collection process.
+- Obtained from National Oceanic and Atmospheric Administration (NOAA) National Centers for Environmental Information (NCEI) Automated Surface Observing System (ASOS) network [@asos_dataset_noaa]
 
--   Present initial findings and insights through visualizations.
+- ASOS is the primary U.S. airport-based surface weather observing network and provides continuous meteorological observations
 
--   Highlight unexpected patterns or anomalies.
+- This study uses the Los Angeles International Airport (KLAX) station
+
+- Observations were recorded at 5-minute intervals
+
+- **Study period:** January 1, 2000 to June 7, 2026, covering more than 26 years of records
 
 
 ## Data Exploration and Visualization {.smaller}
+### Dataset Structure
 
-A study was conducted to determine how...
+- Dataset contains 2,523,612 total 5-minute observations from KLAX
+
+- Variables include Wind direction, wind speed, wind gust, visibility, temperature, dew point, relative humidity, and altimeter pressure
+
+- The modeling target is daily high temperature
+
+- Final target series contains 9,336 daily high-temperature values
+
 
 ```{r, warning=FALSE, echo=F, message=FALSE}
 # =========================================================
